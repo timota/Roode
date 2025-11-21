@@ -88,11 +88,12 @@ VL53L1_Error VL53L1X::init() {
   ESP_LOGD(TAG, "Trying to initialize");
 
   // Configure low-level driver with current address and actual I2C port
-  if (this->get_i2c_bus() == nullptr) {
+  auto *bus = this->parent_;  // I2CDevice base exposes parent_ as the I2CBus
+  if (bus == nullptr) {
     ESP_LOGE(TAG, "No I2C bus bound to VL53L1X device");
     return ESP_FAIL;
   }
-  i2c_port_t port = static_cast<i2c_port_t>(this->get_i2c_bus()->get_port());
+  i2c_port_t port = static_cast<i2c_port_t>(bus->get_port());
   sensor_ = vl53l1x_idf::VL53L1XIDF(port, this->address_);
 
   auto err = sensor_.init();
