@@ -1,5 +1,7 @@
 #pragma once
-#include "VL53L1X_ULD.h"
+
+// Minimal distance-mode definitions for ESP-IDF backend (replaces ULD header)
+enum EDistanceMode { Short = 1, Medium = 2, Long = 3 };
 
 namespace esphome {
 namespace vl53l1x {

@@ -1,7 +1,6 @@
 #pragma once
 #include <math.h>
 
-#include "VL53L1X_ULD.h"
 #include <vector>
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/application.h"
@@ -10,6 +9,12 @@
 #include "esphome/core/log.h"
 #include "ranging.h"
 #include "roi.h"
+#include "vl53l1x_idf.h"
+
+// Map legacy ULD error codes to ESP-IDF style for compatibility with existing logic
+using VL53L1_Error = esp_err_t;
+constexpr VL53L1_Error VL53L1_ERROR_NONE = ESP_OK;
+constexpr VL53L1_Error VL53L1_ERROR_TIME_OUT = ESP_ERR_TIMEOUT;
 
 namespace esphome {
 namespace vl53l1x {
@@ -21,6 +26,7 @@ static const char *const TAG = "VL53L1X";
  */
 class VL53L1X : public i2c::I2CDevice, public Component {
  public:
+  VL53L1X();
   void setup() override;
   void dump_config() override;
   ~VL53L1X();
@@ -52,11 +58,10 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void set_offset(int16_t val) { this->offset = val; }
   void set_xtalk(uint16_t val) { this->xtalk = val; }
   void set_timeout(uint16_t val) { this->timeout = val; }
-
-  bool is_interrupt_enabled() const { return interrupt_active_ && interrupt_pin.has_value(); }
+  bool is_interrupt_enabled() const { return false; }
 
  protected:
-  VL53L1X_ULD sensor;
+  vl53l1x_idf::VL53L1XIDF sensor_;
   optional<GPIOPin *> xshut_pin{};
   optional<InternalGPIOPin *> interrupt_pin{};
   const RangingMode * ranging_mode{};
@@ -65,8 +70,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   optional<int16_t> offset{};
   optional<uint16_t> xtalk{};
   uint16_t timeout{};
- ROI *last_roi{};
- int recovery_count_{0};
+  int recovery_count_{0};
   uint8_t sensor_id_{0};
   uint8_t desired_address_{0x29};
   static std::vector<VL53L1X *> sensors;
@@ -84,13 +88,8 @@ class VL53L1X : public i2c::I2CDevice, public Component {
 
   void soft_reset();
   void record_failure();
-
-  bool interrupt_active_{false};
-  uint8_t interrupt_miss_count_{0};
-  uint32_t last_interrupt_retry_{0};
   uint8_t consecutive_failures_{0};
 };
 
 }  // namespace vl53l1x
 }  // namespace esphome
-
