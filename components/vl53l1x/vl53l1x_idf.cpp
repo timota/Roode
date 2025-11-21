@@ -1,7 +1,7 @@
 #include "vl53l1x_idf.h"
 
 #include <algorithm>
-#include "esp_log.h"
+#include "esphome/core/log.h"
 #include "esp_err.h"
 #include "esp_check.h"
 
@@ -50,9 +50,9 @@ esp_err_t VL53L1XIDF::read_u16(uint16_t reg, uint16_t &value) {
 
 esp_err_t VL53L1XIDF::soft_reset() {
   ESP_RETURN_ON_ERROR(write_u8(REG_SOFT_RESET, 0x00), TAG, "reset step1");
-  vTaskDelay(pdMS_TO_TICKS(1));
+  delay(1);
   ESP_RETURN_ON_ERROR(write_u8(REG_SOFT_RESET, 0x01), TAG, "reset step2");
-  vTaskDelay(pdMS_TO_TICKS(1));
+  delay(1);
   return ESP_OK;
 }
 
@@ -163,10 +163,10 @@ esp_err_t VL53L1XIDF::set_signal_threshold_cps(uint16_t kcps) {
 esp_err_t VL53L1XIDF::calibrate_offset_once(uint16_t target_distance_mm, uint16_t &written_offset_mm) {
   ESP_RETURN_ON_ERROR(start_ranging(), TAG, "cal start");
   bool ready = false;
-  TickType_t start = xTaskGetTickCount();
-  while (!ready && (xTaskGetTickCount() - start) < pdMS_TO_TICKS(200)) {
+  uint32_t start = millis();
+  while (!ready && (millis() - start) < 200) {
     check_data_ready(ready);
-    if (!ready) vTaskDelay(pdMS_TO_TICKS(5));
+    if (!ready) delay(5);
   }
   if (!ready) {
     stop_ranging();
@@ -215,4 +215,3 @@ esp_err_t VL53L1XIDF::read_measurement(Measurement &m) {
 
 }  // namespace vl53l1x_idf
 }  // namespace esphome
-
