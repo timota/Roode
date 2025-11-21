@@ -1,0 +1,51 @@
+substitutions:
+  devicename: roode32idf
+  friendly_name: ${devicename}
+
+external_components:
+  - source: components
+    refresh: always
+
+esphome:
+  name: ${devicename}
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret ssid1
+  password: !secret ssid1_password
+  fast_connect: true
+  power_save_mode: none
+
+logger:
+  level: INFO
+
+i2c:
+  sda: 21
+  scl: 22
+  id: bus_a
+
+vl53l1x:
+  sensor_id: 1
+  timeout: 2000ms
+  pins:
+    xshut: GPIO3
+    interrupt: GPIO1
+  calibration:
+    ranging: long
+
+sensor:
+  - platform: vl53l1x_sensor
+    name: "${friendly_name} distance"
+    id: tof_distance
+    update_interval: 500ms
+
+api:
+  password: !secret api_password
+
+ota:
+  platform: esphome
+  password: !secret ota_password
