@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_check.h"
 
 namespace esphome {
 namespace vl53l1x_idf {

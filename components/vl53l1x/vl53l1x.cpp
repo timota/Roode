@@ -1,8 +1,12 @@
 #include "vl53l1x.h"
 #include "vl53l1x_idf.h"
-#include "../roode/roode.h"
 #include <cstdio>
 #include "esp_check.h"
+
+#if __has_include("../roode/roode.h")
+#define USE_ROODE_LOG 1
+#include "../roode/roode.h"
+#endif
 
 namespace esphome {
 namespace vl53l1x {
@@ -15,9 +19,11 @@ VL53L1X::~VL53L1X() {
   if (this->xshut_pin.has_value()) {
     this->xshut_pin.value()->digital_write(false);
     ESP_LOGD(TAG, "XShut pin set LOW - powering down sensor");
+#ifdef USE_ROODE_LOG
     roode::Roode::log_event("xshut_sensor_" + std::to_string(sensor_id_) + "_off");
     roode::Roode::log_event("xshut_toggled_off");
     roode::Roode::log_event("xshut_toggled");
+#endif
   }
   sensor_.stop_ranging();
 }
@@ -46,9 +52,11 @@ void VL53L1X::setup() {
   for (auto *s : sensors) {
     if (s != this && s->xshut_pin.has_value()) {
       s->xshut_pin.value()->digital_write(false);
+#ifdef USE_ROODE_LOG
       roode::Roode::log_event("xshut_sensor_" + std::to_string(s->sensor_id_) + "_off");
       roode::Roode::log_event("xshut_toggled_off");
       roode::Roode::log_event("xshut_toggled");
+#endif
     }
   }
 
