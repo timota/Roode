@@ -2,6 +2,7 @@
 #include "vl53l1x_idf.h"
 #include "../roode/roode.h"
 #include <cstdio>
+#include "esp_check.h"
 
 namespace esphome {
 namespace vl53l1x {
@@ -195,4 +196,3 @@ void VL53L1X::record_failure() { this->consecutive_failures_++; }
 
 }  // namespace vl53l1x
 }  // namespace esphome
-
