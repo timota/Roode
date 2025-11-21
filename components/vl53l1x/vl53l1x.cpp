@@ -98,7 +98,9 @@ VL53L1_Error VL53L1X::init() {
   }
   i2c_port_t port = I2C_NUM_0;  // default
 #ifdef USE_ESP_IDF
-  if (auto *idf_bus = dynamic_cast<esphome::i2c::IDFI2CBus *>(bus)) {
+  // Avoid RTTI: IDFI2CBus exposes get_port(); we know ESPHome uses it under IDF builds
+  esphome::i2c::IDFI2CBus *idf_bus = static_cast<esphome::i2c::IDFI2CBus *>(bus);
+  if (idf_bus != nullptr) {
     port = static_cast<i2c_port_t>(idf_bus->get_port());
   }
 #endif
