@@ -8,25 +8,34 @@ external_components:
 
 esphome:
   name: ${devicename}
+  friendly_name: ${friendly_name}
 
 esp32:
-  board: wemos_d1_mini32
+  board: esp32dev
   framework:
     type: esp-idf
 
 wifi:
-  ssid: !secret ssid1
-  password: !secret ssid1_password
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
   fast_connect: true
   power_save_mode: none
+
+api:
+  password: !secret api_key
+
+ota:
+  platform: esphome
+  password: !secret ota_password
 
 logger:
   level: INFO
 
 i2c:
-  sda: 21
-  scl: 22
-  id: bus_a
+  - id: bus_a
+    sda: GPIO21
+    scl: GPIO22
+    scan: True
 
 vl53l1x:
   sensor_id: 1
@@ -38,14 +47,7 @@ vl53l1x:
     ranging: long
 
 sensor:
-  - platform: vl53l1x_sensor
+  - platform: vl53l1x
     name: "${friendly_name} distance"
     id: tof_distance
     update_interval: 500ms
-
-api:
-  password: !secret api_password
-
-ota:
-  platform: esphome
-  password: !secret ota_password
