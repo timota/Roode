@@ -123,6 +123,20 @@ esp_err_t VL53L1XIDF::set_intermeasurement_us(uint32_t interval_us) {
   return i2c_master_write_to_device(port_, addr_, buf, sizeof(buf), i2c_timeout_);
 }
 
+esp_err_t VL53L1XIDF::set_offset_mm(int16_t offset_mm) {
+  // Stored as signed 14.2 fixed-point mm in ALGO__PART_TO_PART_RANGE_OFFSET_MM
+  uint16_t regval = static_cast<uint16_t>(offset_mm);
+  return write_u16(REG_ALGO__PART_TO_PART_RANGE_OFFSET_MM, regval);
+}
+
+esp_err_t VL53L1XIDF::set_xtalk(uint16_t xtalk_cps) {
+  // Crosstalk compensation rate in MCPS (9.7). ULD accepts cps; divide by 1000 to mcps
+  // Here we take raw cps and convert to 16-bit 9.7 format: cps/1000 -> mcps, then <<7
+  uint32_t mcps = xtalk_cps / 1000;  // rough; aligns with Arduino behaviour using counts/s
+  uint16_t regval = static_cast<uint16_t>(mcps << 7);
+  return write_u16(REG_ALGO__CROSSTALK_COMPENSATION_RATE, regval);
+}
+
 esp_err_t VL53L1XIDF::start_ranging() {
   return write_u8(REG_SYSTEM__MODE_START, 0x40);  // back-to-back mode
 }

@@ -22,6 +22,8 @@ constexpr uint16_t REG_RESULT__AMBIENT_RATE    = 0x0090;
 constexpr uint16_t REG_RESULT__SIGMA_MM        = 0x0098;
 constexpr uint16_t REG_RESULT__SIGRATE_MCPS    = 0x009E;
 constexpr uint16_t REG_RESULT__OSC_CALIBRATE   = 0x00DE;
+constexpr uint16_t REG_ALGO__PART_TO_PART_RANGE_OFFSET_MM = 0x001E;
+constexpr uint16_t REG_ALGO__CROSSTALK_COMPENSATION_RATE  = 0x0016;
 constexpr uint16_t REG_ROI_CONFIG__MODE_ROI_CENTRE_SPAD = 0x007F;
 constexpr uint16_t REG_ROI_CONFIG__MODE_ROI_XY_SIZE     = 0x0080;
 constexpr uint16_t REG_SYSTEM__INTERMEASUREMENT_PERIOD  = 0x006C;
@@ -72,6 +74,8 @@ class VL53L1XIDF {
   esp_err_t set_roi(const RoiCfg &roi);
   esp_err_t set_timing_budget_us(uint32_t budget_us);
   esp_err_t set_intermeasurement_us(uint32_t interval_us);
+  esp_err_t set_offset_mm(int16_t offset_mm);
+  esp_err_t set_xtalk(uint16_t xtalk_cps);
 
   esp_err_t start_ranging();
   esp_err_t stop_ranging();
@@ -92,4 +96,3 @@ class VL53L1XIDF {
 
 }  // namespace vl53l1x_idf
 }  // namespace esphome
-

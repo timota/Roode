@@ -79,8 +79,14 @@ void VL53L1X::setup() {
 VL53L1_Error VL53L1X::init() {
   ESP_LOGD(TAG, "Trying to initialize");
 
-  // Configure low-level driver with current address
-  sensor_ = vl53l1x_idf::VL53L1XIDF(I2C_NUM_0, this->address_);
+  // Configure low-level driver with current address and actual I2C port
+  i2c_port_t port = I2C_NUM_0;
+#ifdef USE_ESP32
+  if (this->get_i2c_bus() != nullptr) {
+    port = static_cast<i2c_port_t>(this->get_i2c_bus()->get_port());
+  }
+#endif
+  sensor_ = vl53l1x_idf::VL53L1XIDF(port, this->address_);
 
   auto err = sensor_.init();
   if (err != ESP_OK) {
@@ -101,6 +107,13 @@ VL53L1_Error VL53L1X::init() {
   // Set default ranging mode
   const RangingMode *mode = ranging_mode_override.value_or(Ranging::Long);
   set_ranging_mode(mode);
+
+  if (this->offset.has_value()) {
+    sensor_.set_offset_mm(this->offset.value());
+  }
+  if (this->xtalk.has_value()) {
+    sensor_.set_xtalk(this->xtalk.value());
+  }
 
   return ESP_OK;
 }
@@ -154,8 +167,19 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   bool ready = false;
   auto start_time = millis();
+  bool use_int = this->interrupt_pin.has_value();
+  bool initial_state = false;
+  if (use_int) {
+    initial_state = this->interrupt_pin.value()->digital_read();
+  }
   while (!ready && (millis() - start_time) < this->timeout) {
-    sensor_.check_data_ready(ready);
+    if (use_int) {
+      if (this->interrupt_pin.value()->digital_read() != initial_state) {
+        ready = true;
+      }
+    } else {
+      sensor_.check_data_ready(ready);
+    }
     if (!ready) {
       delay(1);
       App.feed_wdt();
@@ -165,6 +189,9 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   if (!ready) {
     status = ESP_ERR_TIMEOUT;
     sensor_.stop_ranging();
+    if (this->xshut_pin.has_value()) {
+      this->restart();
+    }
     return {};
   }
 
@@ -190,9 +217,25 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
 bool VL53L1X::check_features() { return true; }
 bool VL53L1X::validate_interrupt() { return false; }
-void VL53L1X::restart() { sensor_.soft_reset(); }
-void VL53L1X::soft_reset() { sensor_.soft_reset(); }
-void VL53L1X::record_failure() { this->consecutive_failures_++; }
+void VL53L1X::restart() {
+  if (this->xshut_pin.has_value()) {
+    this->xshut_pin.value()->digital_write(false);
+    delay(5);
+    this->xshut_pin.value()->digital_write(true);
+    delay(2);
+    this->init();
+  } else {
+    sensor_.soft_reset();
+  }
+}
+
+void VL53L1X::soft_reset() { restart(); }
+void VL53L1X::record_failure() {
+  if (++consecutive_failures_ >= 10) {
+    restart();
+    consecutive_failures_ = 0;
+  }
+}
 
 }  // namespace vl53l1x
 }  // namespace esphome
