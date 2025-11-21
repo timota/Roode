@@ -10,45 +10,45 @@ namespace vl53l1x_idf {
 
 static const char *TAG = "vl53l1x_idf";
 
-// Helpers -----------------------------------------------------------------
-
 static inline uint8_t hi(uint16_t v) { return (v >> 8) & 0xFF; }
 static inline uint8_t lo(uint16_t v) { return v & 0xFF; }
 
 VL53L1XIDF::VL53L1XIDF(i2c::I2CBus *bus, uint8_t i2c_addr) : bus_(bus), addr_(i2c_addr) {}
 
-// I2C primitives -----------------------------------------------------------
+esp_err_t VL53L1XIDF::bus_write(const uint8_t *data, size_t len) {
+  if (bus_ == nullptr) return ESP_ERR_INVALID_STATE;
+  return bus_->write(this->addr_, data, len, true) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t VL53L1XIDF::bus_write_read(const uint8_t *wdata, size_t wlen, uint8_t *rdata, size_t rlen) {
+  if (bus_ == nullptr) return ESP_ERR_INVALID_STATE;
+  return bus_->write_readv(this->addr_, wdata, wlen, rdata, rlen) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
+}
 
 esp_err_t VL53L1XIDF::write_u8(uint16_t reg, uint8_t value) {
   uint8_t buf[3] = {hi(reg), lo(reg), value};
-  return bus_->write(buf, sizeof(buf), true) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
+  return bus_write(buf, sizeof(buf));
 }
 
 esp_err_t VL53L1XIDF::write_u16(uint16_t reg, uint16_t value) {
   uint8_t buf[4] = {hi(reg), lo(reg), hi(value), lo(value)};
-  return bus_->write(buf, sizeof(buf), true) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
+  return bus_write(buf, sizeof(buf));
 }
 
 esp_err_t VL53L1XIDF::read_u8(uint16_t reg, uint8_t &value) {
   uint8_t regbuf[2] = {hi(reg), lo(reg)};
-  auto err = bus_->write_read(regbuf, sizeof(regbuf), &value, 1) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
-  return err;
+  return bus_write_read(regbuf, sizeof(regbuf), &value, 1);
 }
 
 esp_err_t VL53L1XIDF::read_u16(uint16_t reg, uint16_t &value) {
   uint8_t regbuf[2] = {hi(reg), lo(reg)};
   uint8_t data[2]{};
-  auto err = bus_->write_read(regbuf, sizeof(regbuf), data, 2) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
-  if (err == ESP_OK) {
-    value = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-  }
+  auto err = bus_write_read(regbuf, sizeof(regbuf), data, 2);
+  if (err == ESP_OK) value = (static_cast<uint16_t>(data[0]) << 8) | data[1];
   return err;
 }
 
-// Core driver --------------------------------------------------------------
-
 esp_err_t VL53L1XIDF::soft_reset() {
-  if (bus_ == nullptr) return ESP_ERR_INVALID_STATE;
   ESP_RETURN_ON_ERROR(write_u8(REG_SOFT_RESET, 0x00), TAG, "reset step1");
   vTaskDelay(pdMS_TO_TICKS(1));
   ESP_RETURN_ON_ERROR(write_u8(REG_SOFT_RESET, 0x01), TAG, "reset step2");
@@ -57,37 +57,29 @@ esp_err_t VL53L1XIDF::soft_reset() {
 }
 
 esp_err_t VL53L1XIDF::init() {
-  // Minimal bring-up: reset then basic config per UM2555 expectations.
+  if (bus_ == nullptr) return ESP_ERR_INVALID_STATE;
   ESP_RETURN_ON_ERROR(soft_reset(), TAG, "soft reset failed");
-
-  // Clear interrupts and stop ranging to start from a known state.
   clear_interrupt();
   stop_ranging();
-
-  // Recommended: set interrupt polarity active low (default 0x01 -> active high; keep default for ESP boards)
   return ESP_OK;
 }
 
 esp_err_t VL53L1XIDF::set_i2c_address(uint8_t new_addr_7bit) {
-  // Write reg expects 7-bit in LSBs
   ESP_RETURN_ON_ERROR(write_u8(REG_I2C_SLAVE_DEVICE_ADDR, new_addr_7bit & 0x7F), TAG, "set addr");
   addr_ = new_addr_7bit;
   return ESP_OK;
 }
 
 esp_err_t VL53L1XIDF::set_roi(const RoiCfg &roi) {
-  // size register packs (height-1)<<4 | (width-1)
   uint8_t w = std::max<uint8_t>(4, std::min<uint8_t>(16, roi.width));
   uint8_t h = std::max<uint8_t>(4, std::min<uint8_t>(16, roi.height));
-  uint8_t size = (uint8_t)((h - 1) << 4) | (uint8_t)(w - 1);
-
+  uint8_t size = static_cast<uint8_t>(((h - 1) << 4) | (w - 1));
   ESP_RETURN_ON_ERROR(write_u8(REG_ROI_CONFIG__MODE_ROI_XY_SIZE, size), TAG, "roi size");
   ESP_RETURN_ON_ERROR(write_u8(REG_ROI_CONFIG__MODE_ROI_CENTRE_SPAD, roi.center), TAG, "roi center");
   return ESP_OK;
 }
 
 esp_err_t VL53L1XIDF::set_timing_budget_us(uint32_t budget_us) {
-  // Port of ULD timing budget calc (LOWPOWER_AUTONOMOUS preset) similar to MK driver
   const uint32_t timing_guard_us = 4528;
   if (budget_us <= timing_guard_us) return ESP_ERR_INVALID_ARG;
   uint32_t range_timeout_us = (budget_us - timing_guard_us) / 2;
@@ -141,31 +133,26 @@ esp_err_t VL53L1XIDF::set_timing_budget_us(uint32_t budget_us) {
 }
 
 esp_err_t VL53L1XIDF::set_intermeasurement_us(uint32_t interval_us) {
-  // intermeasurement is 32-bit in multiples of oscillator periods; for simplicity store raw microseconds.
-  // ULD converts using oscillator calibration; here we write ms equivalent for common 19.2MHz calibration (approx).
   uint32_t period_ms = interval_us / 1000;
   uint8_t buf[6] = {hi(REG_SYSTEM__INTERMEASUREMENT_PERIOD), lo(REG_SYSTEM__INTERMEASUREMENT_PERIOD),
                     (uint8_t)((period_ms >> 24) & 0xFF), (uint8_t)((period_ms >> 16) & 0xFF),
                     (uint8_t)((period_ms >> 8) & 0xFF), (uint8_t)(period_ms & 0xFF)};
-  return i2c_master_write_to_device(port_, addr_, buf, sizeof(buf), i2c_timeout_);
+  return bus_write(buf, sizeof(buf));
 }
 
 esp_err_t VL53L1XIDF::set_offset_mm(int16_t offset_mm) {
-  // Stored as signed 14.2 fixed-point mm in ALGO__PART_TO_PART_RANGE_OFFSET_MM
   uint16_t regval = static_cast<uint16_t>(offset_mm);
   return write_u16(REG_ALGO__PART_TO_PART_RANGE_OFFSET_MM, regval);
 }
 
 esp_err_t VL53L1XIDF::set_xtalk(uint16_t xtalk_cps) {
-  // Crosstalk compensation rate in MCPS (9.7). ULD accepts cps; divide by 1000 to mcps
-  // Here we take raw cps and convert to 16-bit 9.7 format: cps/1000 -> mcps, then <<7
-  uint32_t mcps = xtalk_cps / 1000;  // rough; aligns with Arduino behaviour using counts/s
+  uint32_t mcps = xtalk_cps / 1000;
   uint16_t regval = static_cast<uint16_t>(mcps << 7);
   return write_u16(REG_ALGO__CROSSTALK_COMPENSATION_RATE, regval);
 }
 
 esp_err_t VL53L1XIDF::set_sigma_threshold_mm(uint16_t sigma_mm) {
-  return write_u16(REG_SIGMA_THRESHOLD, sigma_mm << 2);  // 14.2 format
+  return write_u16(REG_SIGMA_THRESHOLD, sigma_mm << 2);
 }
 
 esp_err_t VL53L1XIDF::set_signal_threshold_cps(uint16_t kcps) {
@@ -195,24 +182,18 @@ esp_err_t VL53L1XIDF::calibrate_offset_once(uint16_t target_distance_mm, uint16_
   return set_offset_mm(offset);
 }
 
-esp_err_t VL53L1XIDF::start_ranging() {
-  return write_u8(REG_SYSTEM__MODE_START, 0x40);  // back-to-back mode
-}
+esp_err_t VL53L1XIDF::start_ranging() { return write_u8(REG_SYSTEM__MODE_START, 0x40); }
 
-esp_err_t VL53L1XIDF::stop_ranging() {
-  return write_u8(REG_SYSTEM__MODE_START, 0x00);
-}
+esp_err_t VL53L1XIDF::stop_ranging() { return write_u8(REG_SYSTEM__MODE_START, 0x00); }
 
 esp_err_t VL53L1XIDF::check_data_ready(bool &ready) {
   uint8_t gpio_status = 0;
   ESP_RETURN_ON_ERROR(read_u8(REG_GPIO_TIO_HV_STATUS, gpio_status), TAG, "read status");
-  ready = (gpio_status & 0x01) != 0;  // Bit0 = 1 when new data ready (matches ULD CheckForDataReady)
+  ready = (gpio_status & 0x01) != 0;
   return ESP_OK;
 }
 
-esp_err_t VL53L1XIDF::clear_interrupt() {
-  return write_u8(REG_SYSTEM__INTERRUPT_CLEAR, 0x01);
-}
+esp_err_t VL53L1XIDF::clear_interrupt() { return write_u8(REG_SYSTEM__INTERRUPT_CLEAR, 0x01); }
 
 esp_err_t VL53L1XIDF::read_measurement(Measurement &m) {
   uint16_t dist = 0;
@@ -228,9 +209,10 @@ esp_err_t VL53L1XIDF::read_measurement(Measurement &m) {
   m.distance_mm = dist;
   m.ambient_rate_mcps = ambient;
   m.signal_rate_mcps = signal;
-  m.status = static_cast<RangeStatus>(status_raw & 0x1F);  // lower 5 bits contain range status per ULD
+  m.status = static_cast<RangeStatus>(status_raw & 0x1F);
   return ESP_OK;
 }
 
 }  // namespace vl53l1x_idf
 }  // namespace esphome
+

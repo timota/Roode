@@ -1,15 +1,12 @@
 #pragma once
 
-// ESP-IDF native VL53L1X minimal driver (register level)
-// Covers the sequencing described in UM2555 for multi-zone ranging.
-
 #include <cstdint>
 #include "esphome/components/i2c/i2c.h"
 
 namespace esphome {
 namespace vl53l1x_idf {
 
-// Raw register addresses used by the VL53L1X ULD
+// Registers
 constexpr uint16_t REG_SOFT_RESET              = 0x0000;
 constexpr uint16_t REG_I2C_SLAVE_DEVICE_ADDR   = 0x0001;
 constexpr uint16_t REG_GPIO_HV_MUX_CTRL        = 0x0030;
@@ -33,7 +30,6 @@ constexpr uint16_t REG_RANGE_CONFIG__TIMEOUT_A           = 0x005E;
 constexpr uint16_t REG_RANGE_CONFIG__TIMEOUT_B           = 0x0061;
 constexpr uint16_t REG_PHASECAL_CONFIG__TIMEOUT          = 0x004B;
 
-// Range status mapping aligns with UM2555/ULD
 enum class RangeStatus : uint8_t {
   RANGE_VALID = 0,
   SIGMA_FAIL = 1,
@@ -53,9 +49,9 @@ enum class RangeStatus : uint8_t {
 };
 
 struct RoiCfg {
-  uint8_t width;   // 4-16
-  uint8_t height;  // 4-16
-  uint8_t center;  // SPAD index 0-255
+  uint8_t width;
+  uint8_t height;
+  uint8_t center;
 };
 
 struct Measurement {
@@ -80,7 +76,6 @@ class VL53L1XIDF {
   esp_err_t set_xtalk(uint16_t xtalk_cps);
   esp_err_t set_sigma_threshold_mm(uint16_t sigma_mm);
   esp_err_t set_signal_threshold_cps(uint16_t kcps);
-
   esp_err_t calibrate_offset_once(uint16_t target_distance_mm, uint16_t &written_offset_mm);
 
   esp_err_t start_ranging();
@@ -91,8 +86,10 @@ class VL53L1XIDF {
 
  private:
   i2c::I2CBus *bus_{nullptr};
-  uint8_t addr_;  // 7-bit address
+  uint8_t addr_{};
 
+  esp_err_t bus_write(const uint8_t *data, size_t len);
+  esp_err_t bus_write_read(const uint8_t *wdata, size_t wlen, uint8_t *rdata, size_t rlen);
   esp_err_t write_u8(uint16_t reg, uint8_t value);
   esp_err_t write_u16(uint16_t reg, uint16_t value);
   esp_err_t read_u8(uint16_t reg, uint8_t &value);
@@ -101,3 +98,4 @@ class VL53L1XIDF {
 
 }  // namespace vl53l1x_idf
 }  // namespace esphome
+

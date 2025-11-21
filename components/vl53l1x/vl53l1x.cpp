@@ -16,7 +16,7 @@ namespace vl53l1x {
 
 std::vector<VL53L1X *> VL53L1X::sensors{};
 
-VL53L1X::VL53L1X() : sensor_(I2C_NUM_0) {}
+VL53L1X::VL53L1X() = default;
 
 VL53L1X::~VL53L1X() {
   if (this->xshut_pin.has_value()) {
@@ -28,7 +28,7 @@ VL53L1X::~VL53L1X() {
     roode::Roode::log_event("xshut_toggled");
 #endif
   }
-  sensor_.stop_ranging();
+  if (sensor_) sensor_->stop_ranging();
 }
 
 void VL53L1X::dump_config() {
@@ -104,9 +104,9 @@ VL53L1_Error VL53L1X::init() {
     port = static_cast<i2c_port_t>(idf_bus->get_port());
   }
 #endif
-  sensor_ = vl53l1x_idf::VL53L1XIDF(bus, this->address_);
+  sensor_ = std::make_unique<vl53l1x_idf::VL53L1XIDF>(bus, this->address_);
 
-  auto err = sensor_.init();
+  auto err = sensor_->init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Could not initialize device, error code: %d", err);
     return err;
@@ -114,7 +114,7 @@ VL53L1_Error VL53L1X::init() {
 
   // Apply desired I2C address if different
   if (desired_address_ != address_) {
-    err = sensor_.set_i2c_address(desired_address_);
+    err = sensor_->set_i2c_address(desired_address_);
     if (err != ESP_OK) {
       ESP_LOGE(TAG, "Failed to change address. error: %d", err);
       return err;
@@ -127,17 +127,17 @@ VL53L1_Error VL53L1X::init() {
   set_ranging_mode(mode);
 
   if (this->offset.has_value()) {
-    sensor_.set_offset_mm(this->offset.value());
+    sensor_->set_offset_mm(this->offset.value());
   }
   if (this->xtalk.has_value()) {
-    sensor_.set_xtalk(this->xtalk.value());
+    sensor_->set_xtalk(this->xtalk.value());
   }
   // Optional thresholds from calibration
   if (this->sigma_threshold_mm.has_value()) {
-    sensor_.set_sigma_threshold_mm(this->sigma_threshold_mm.value());
+    sensor_->set_sigma_threshold_mm(this->sigma_threshold_mm.value());
   }
   if (this->signal_threshold_kcps.has_value()) {
-    sensor_.set_signal_threshold_cps(this->signal_threshold_kcps.value());
+    sensor_->set_signal_threshold_cps(this->signal_threshold_kcps.value());
   }
 
   return ESP_OK;
@@ -156,12 +156,12 @@ void VL53L1X::set_ranging_mode(const RangingMode *mode) {
     return;
   }
 
-  auto status = sensor_.set_timing_budget_us(mode->timing_budget * 1000);
+  auto status = sensor_->set_timing_budget_us(mode->timing_budget * 1000);
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not set timing budget: %d", status);
   }
 
-  status = sensor_.set_intermeasurement_us((mode->delay_between_measurements) * 1000);
+  status = sensor_->set_intermeasurement_us((mode->delay_between_measurements) * 1000);
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not set measurement delay: %d", status);
   }
@@ -178,13 +178,13 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   ESP_RETURN_ON_FALSE(roi != nullptr, ESP_ERR_INVALID_ARG, TAG, "ROI is null");
 
-  status = sensor_.set_roi({roi->width, roi->height, roi->center});
+  status = sensor_->set_roi({roi->width, roi->height, roi->center});
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not set ROI, error: %d", status);
     return {};
   }
 
-  status = sensor_.start_ranging();
+  status = sensor_->start_ranging();
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Failed to start ranging, error: %d", status);
     return {};
@@ -203,7 +203,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
         ready = true;
       }
     } else {
-      sensor_.check_data_ready(ready);
+      sensor_->check_data_ready(ready);
     }
     if (!ready) {
       delay(1);
@@ -213,7 +213,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   if (!ready) {
     status = ESP_ERR_TIMEOUT;
-    sensor_.stop_ranging();
+    sensor_->stop_ranging();
     if (this->xshut_pin.has_value()) {
       this->restart();
     }
@@ -221,9 +221,9 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   }
 
   vl53l1x_idf::Measurement m;
-  status = sensor_.read_measurement(m);
-  sensor_.clear_interrupt();
-  sensor_.stop_ranging();
+  status = sensor_->read_measurement(m);
+  sensor_->clear_interrupt();
+  sensor_->stop_ranging();
 
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not get distance, error: %d", status);
@@ -249,8 +249,8 @@ void VL53L1X::restart() {
     this->xshut_pin.value()->digital_write(true);
     delay(2);
     this->init();
-  } else {
-    sensor_.soft_reset();
+  } else if (sensor_) {
+    sensor_->soft_reset();
   }
 }
 
