@@ -93,7 +93,13 @@ VL53L1_Error VL53L1X::init() {
     ESP_LOGE(TAG, "No I2C bus bound to VL53L1X device");
     return ESP_FAIL;
   }
-  i2c_port_t port = static_cast<i2c_port_t>(bus->get_port());
+  i2c_port_t port = I2C_NUM_0;  // default
+#ifdef USE_ESP_IDF
+  // ESP-IDF shim exposes get_port() via esp-idf bus class; detect with RTTI
+  if (auto *idf_bus = dynamic_cast<esphome::i2c::ESPHomeI2CBus *>(bus)) {
+    port = static_cast<i2c_port_t>(idf_bus->get_port());
+  }
+#endif
   sensor_ = vl53l1x_idf::VL53L1XIDF(port, this->address_);
 
   auto err = sensor_.init();
