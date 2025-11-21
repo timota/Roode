@@ -88,7 +88,7 @@ VL53L1_Error VL53L1X::init() {
   ESP_LOGD(TAG, "Trying to initialize");
 
   // Configure low-level driver with current address and actual I2C port
-  auto *bus = this->parent_.lock().get();
+  auto *bus = this->bus_;
   if (bus == nullptr) {
     ESP_LOGE(TAG, "No I2C bus bound to VL53L1X device");
     return ESP_FAIL;
