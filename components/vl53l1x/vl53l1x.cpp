@@ -104,7 +104,7 @@ VL53L1_Error VL53L1X::init() {
     port = static_cast<i2c_port_t>(idf_bus->get_port());
   }
 #endif
-  sensor_ = vl53l1x_idf::VL53L1XIDF(port, this->address_);
+  sensor_ = vl53l1x_idf::VL53L1XIDF(bus, this->address_);
 
   auto err = sensor_.init();
   if (err != ESP_OK) {

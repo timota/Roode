@@ -15,31 +15,30 @@ static const char *TAG = "vl53l1x_idf";
 static inline uint8_t hi(uint16_t v) { return (v >> 8) & 0xFF; }
 static inline uint8_t lo(uint16_t v) { return v & 0xFF; }
 
-VL53L1XIDF::VL53L1XIDF(i2c_port_t port, uint8_t i2c_addr, TickType_t i2c_timeout_ticks)
-    : port_(port), addr_(i2c_addr), i2c_timeout_(i2c_timeout_ticks) {}
+VL53L1XIDF::VL53L1XIDF(i2c::I2CBus *bus, uint8_t i2c_addr) : bus_(bus), addr_(i2c_addr) {}
 
 // I2C primitives -----------------------------------------------------------
 
 esp_err_t VL53L1XIDF::write_u8(uint16_t reg, uint8_t value) {
   uint8_t buf[3] = {hi(reg), lo(reg), value};
-  return i2c_master_write_to_device(port_, addr_, buf, sizeof(buf), i2c_timeout_);
+  return bus_->write(buf, sizeof(buf), true) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
 }
 
 esp_err_t VL53L1XIDF::write_u16(uint16_t reg, uint16_t value) {
   uint8_t buf[4] = {hi(reg), lo(reg), hi(value), lo(value)};
-  return i2c_master_write_to_device(port_, addr_, buf, sizeof(buf), i2c_timeout_);
+  return bus_->write(buf, sizeof(buf), true) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
 }
 
 esp_err_t VL53L1XIDF::read_u8(uint16_t reg, uint8_t &value) {
   uint8_t regbuf[2] = {hi(reg), lo(reg)};
-  esp_err_t err = i2c_master_write_read_device(port_, addr_, regbuf, sizeof(regbuf), &value, 1, i2c_timeout_);
+  auto err = bus_->write_read(regbuf, sizeof(regbuf), &value, 1) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
   return err;
 }
 
 esp_err_t VL53L1XIDF::read_u16(uint16_t reg, uint16_t &value) {
   uint8_t regbuf[2] = {hi(reg), lo(reg)};
   uint8_t data[2]{};
-  esp_err_t err = i2c_master_write_read_device(port_, addr_, regbuf, sizeof(regbuf), data, 2, i2c_timeout_);
+  auto err = bus_->write_read(regbuf, sizeof(regbuf), data, 2) == i2c::ERROR_OK ? ESP_OK : ESP_FAIL;
   if (err == ESP_OK) {
     value = (static_cast<uint16_t>(data[0]) << 8) | data[1];
   }
@@ -49,7 +48,7 @@ esp_err_t VL53L1XIDF::read_u16(uint16_t reg, uint16_t &value) {
 // Core driver --------------------------------------------------------------
 
 esp_err_t VL53L1XIDF::soft_reset() {
-  // Datasheet reset sequence: write 0x00 then 0x01 to 0x0000
+  if (bus_ == nullptr) return ESP_ERR_INVALID_STATE;
   ESP_RETURN_ON_ERROR(write_u8(REG_SOFT_RESET, 0x00), TAG, "reset step1");
   vTaskDelay(pdMS_TO_TICKS(1));
   ESP_RETURN_ON_ERROR(write_u8(REG_SOFT_RESET, 0x01), TAG, "reset step2");

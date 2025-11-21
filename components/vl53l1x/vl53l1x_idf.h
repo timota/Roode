@@ -4,7 +4,7 @@
 // Covers the sequencing described in UM2555 for multi-zone ranging.
 
 #include <cstdint>
-#include "driver/i2c.h"
+#include "esphome/components/i2c/i2c.h"
 
 namespace esphome {
 namespace vl53l1x_idf {
@@ -67,7 +67,7 @@ struct Measurement {
 
 class VL53L1XIDF {
  public:
-  VL53L1XIDF(i2c_port_t port, uint8_t i2c_addr = 0x29, TickType_t i2c_timeout_ticks = pdMS_TO_TICKS(50));
+  VL53L1XIDF(i2c::I2CBus *bus, uint8_t i2c_addr = 0x29);
 
   esp_err_t init();
   esp_err_t soft_reset();
@@ -90,9 +90,8 @@ class VL53L1XIDF {
   esp_err_t read_measurement(Measurement &m);
 
  private:
-  i2c_port_t port_;
+  i2c::I2CBus *bus_{nullptr};
   uint8_t addr_;  // 7-bit address
-  TickType_t i2c_timeout_;
 
   esp_err_t write_u8(uint16_t reg, uint8_t value);
   esp_err_t write_u16(uint16_t reg, uint16_t value);
