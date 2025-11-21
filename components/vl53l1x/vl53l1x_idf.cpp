@@ -87,29 +87,56 @@ esp_err_t VL53L1XIDF::set_roi(const RoiCfg &roi) {
 }
 
 esp_err_t VL53L1XIDF::set_timing_budget_us(uint32_t budget_us) {
-  // For brevity we reuse ULD helper equations: timeout A/B = budget/2 adjusted for guard.
-  // Guard time (~4.5 ms) as in ST examples.
+  // Port of ULD timing budget calc (LOWPOWER_AUTONOMOUS preset) similar to MK driver
   const uint32_t timing_guard_us = 4528;
   if (budget_us <= timing_guard_us) return ESP_ERR_INVALID_ARG;
-  uint32_t range_config_timeout_us = (budget_us - timing_guard_us) / 2;
+  uint32_t range_timeout_us = (budget_us - timing_guard_us) / 2;
 
-  // Macro period derived from current VCSEL settings; we approximate using defaults: ~1.65us per macro.
-  // This is a simplification adequate for initial integration; for production mirror ULD calc.
-  const uint32_t macro_period_us = 1650;
-  auto to_mclks = [&](uint32_t us) { return (us << 12) / macro_period_us; };
-
-  auto encode_timeout = [](uint32_t mclks) {
-    uint32_t ls = 0; uint16_t ms = 0;
-    if (mclks > 0) {
-      ls = mclks - 1;
-      while (ls & 0xFFFFFF00) { ls >>= 1; ms++; }
-    }
-    return static_cast<uint16_t>((ms << 8) | (ls & 0xFF));
+  auto calc_macro_period = [&](uint8_t vcsel_period_reg) {
+    uint16_t fast_osc_frequency = 0;
+    if (read_u16(0x0006, fast_osc_frequency) != ESP_OK) return (uint32_t)0;
+    uint32_t pll_period_us = ((uint32_t)1 << 30) / fast_osc_frequency;
+    uint8_t vcsel_period_pclks = (vcsel_period_reg + 1) << 1;
+    uint32_t macro_period_us = (uint32_t)2304 * pll_period_us;
+    macro_period_us >>= 6;
+    macro_period_us *= vcsel_period_pclks;
+    macro_period_us >>= 6;
+    return macro_period_us;
   };
 
-  uint16_t timeout_a = encode_timeout(to_mclks(range_config_timeout_us));
-  ESP_RETURN_ON_ERROR(write_u16(REG_RANGE_CONFIG__TIMEOUT_A, timeout_a), TAG, "timeout A");
-  ESP_RETURN_ON_ERROR(write_u16(REG_RANGE_CONFIG__TIMEOUT_B, timeout_a), TAG, "timeout B");
+  auto timeout_microseconds_to_mclks = [](uint32_t timeout_us, uint32_t macro_period_us) {
+    return (((uint32_t)timeout_us << 12) + (macro_period_us >> 1)) / macro_period_us;
+  };
+
+  auto encode_timeout = [](uint32_t timeout_mclks) {
+    uint32_t ls_byte = 0;
+    uint16_t ms_byte = 0;
+    if (timeout_mclks > 0) {
+      ls_byte = timeout_mclks - 1;
+      while (ls_byte & 0xFFFFFF00) {
+        ls_byte >>= 1;
+        ms_byte++;
+      }
+    }
+    return static_cast<uint16_t>((ms_byte << 8) | (ls_byte & 0xFF));
+  };
+
+  uint8_t vcsel_a = 0, vcsel_b = 0;
+  read_u8(0x0060, vcsel_a);
+  read_u8(0x0063, vcsel_b);
+  uint32_t macro_a = calc_macro_period(vcsel_a);
+  uint32_t macro_b = calc_macro_period(vcsel_b);
+  if (macro_a == 0 || macro_b == 0) return ESP_FAIL;
+
+  uint32_t phasecal_timeout_mclks = timeout_microseconds_to_mclks(1000, macro_a);
+  if (phasecal_timeout_mclks > 0xFF) phasecal_timeout_mclks = 0xFF;
+  ESP_RETURN_ON_ERROR(write_u8(REG_PHASECAL_CONFIG__TIMEOUT, (uint8_t)phasecal_timeout_mclks), TAG, "phasecal");
+
+  uint32_t range_timeout_mclks_a = timeout_microseconds_to_mclks(range_timeout_us, macro_a);
+  uint32_t range_timeout_mclks_b = timeout_microseconds_to_mclks(range_timeout_us, macro_b);
+
+  ESP_RETURN_ON_ERROR(write_u16(REG_RANGE_CONFIG__TIMEOUT_A, encode_timeout(range_timeout_mclks_a)), TAG, "toa");
+  ESP_RETURN_ON_ERROR(write_u16(REG_RANGE_CONFIG__TIMEOUT_B, encode_timeout(range_timeout_mclks_b)), TAG, "tob");
   return ESP_OK;
 }
 
@@ -135,6 +162,37 @@ esp_err_t VL53L1XIDF::set_xtalk(uint16_t xtalk_cps) {
   uint32_t mcps = xtalk_cps / 1000;  // rough; aligns with Arduino behaviour using counts/s
   uint16_t regval = static_cast<uint16_t>(mcps << 7);
   return write_u16(REG_ALGO__CROSSTALK_COMPENSATION_RATE, regval);
+}
+
+esp_err_t VL53L1XIDF::set_sigma_threshold_mm(uint16_t sigma_mm) {
+  return write_u16(REG_SIGMA_THRESHOLD, sigma_mm << 2);  // 14.2 format
+}
+
+esp_err_t VL53L1XIDF::set_signal_threshold_cps(uint16_t kcps) {
+  uint16_t mcps_9_7 = static_cast<uint16_t>((kcps * 1000) >> 7);
+  return write_u16(REG_MIN_COUNT_RATE_RTN_LIMIT, mcps_9_7);
+}
+
+esp_err_t VL53L1XIDF::calibrate_offset_once(uint16_t target_distance_mm, uint16_t &written_offset_mm) {
+  ESP_RETURN_ON_ERROR(start_ranging(), TAG, "cal start");
+  bool ready = false;
+  TickType_t start = xTaskGetTickCount();
+  while (!ready && (xTaskGetTickCount() - start) < pdMS_TO_TICKS(200)) {
+    check_data_ready(ready);
+    if (!ready) vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  if (!ready) {
+    stop_ranging();
+    return ESP_ERR_TIMEOUT;
+  }
+  Measurement m;
+  auto err = read_measurement(m);
+  clear_interrupt();
+  stop_ranging();
+  if (err != ESP_OK) return err;
+  int16_t offset = static_cast<int16_t>(target_distance_mm) - static_cast<int16_t>(m.distance_mm);
+  written_offset_mm = offset;
+  return set_offset_mm(offset);
 }
 
 esp_err_t VL53L1XIDF::start_ranging() {

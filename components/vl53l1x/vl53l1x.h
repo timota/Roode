@@ -58,6 +58,8 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void set_offset(int16_t val) { this->offset = val; }
   void set_xtalk(uint16_t val) { this->xtalk = val; }
   void set_timeout(uint16_t val) { this->timeout = val; }
+  void set_sigma_threshold(uint16_t mm) { this->sigma_threshold_mm = mm; }
+  void set_signal_threshold_kcps(uint16_t kcps) { this->signal_threshold_kcps = kcps; }
   bool is_interrupt_enabled() const { return false; }
 
  protected:
@@ -69,6 +71,8 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   optional<const RangingMode *> ranging_mode_override{};
   optional<int16_t> offset{};
   optional<uint16_t> xtalk{};
+  optional<uint16_t> sigma_threshold_mm{};
+  optional<uint16_t> signal_threshold_kcps{};
   uint16_t timeout{};
   int recovery_count_{0};
   uint8_t sensor_id_{0};

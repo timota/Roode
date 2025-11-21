@@ -113,6 +113,13 @@ VL53L1_Error VL53L1X::init() {
   if (this->xtalk.has_value()) {
     sensor_.set_xtalk(this->xtalk.value());
   }
+  // Optional thresholds from calibration
+  if (this->sigma_threshold_mm.has_value()) {
+    sensor_.set_sigma_threshold_mm(this->sigma_threshold_mm.value());
+  }
+  if (this->signal_threshold_kcps.has_value()) {
+    sensor_.set_signal_threshold_cps(this->signal_threshold_kcps.value());
+  }
 
   return ESP_OK;
 }

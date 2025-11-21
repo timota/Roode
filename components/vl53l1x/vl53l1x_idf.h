@@ -24,6 +24,8 @@ constexpr uint16_t REG_RESULT__SIGRATE_MCPS    = 0x009E;
 constexpr uint16_t REG_RESULT__OSC_CALIBRATE   = 0x00DE;
 constexpr uint16_t REG_ALGO__PART_TO_PART_RANGE_OFFSET_MM = 0x001E;
 constexpr uint16_t REG_ALGO__CROSSTALK_COMPENSATION_RATE  = 0x0016;
+constexpr uint16_t REG_SIGMA_THRESHOLD           = 0x0064;
+constexpr uint16_t REG_MIN_COUNT_RATE_RTN_LIMIT  = 0x0066;
 constexpr uint16_t REG_ROI_CONFIG__MODE_ROI_CENTRE_SPAD = 0x007F;
 constexpr uint16_t REG_ROI_CONFIG__MODE_ROI_XY_SIZE     = 0x0080;
 constexpr uint16_t REG_SYSTEM__INTERMEASUREMENT_PERIOD  = 0x006C;
@@ -76,6 +78,10 @@ class VL53L1XIDF {
   esp_err_t set_intermeasurement_us(uint32_t interval_us);
   esp_err_t set_offset_mm(int16_t offset_mm);
   esp_err_t set_xtalk(uint16_t xtalk_cps);
+  esp_err_t set_sigma_threshold_mm(uint16_t sigma_mm);
+  esp_err_t set_signal_threshold_cps(uint16_t kcps);
+
+  esp_err_t calibrate_offset_once(uint16_t target_distance_mm, uint16_t &written_offset_mm);
 
   esp_err_t start_ranging();
   esp_err_t stop_ranging();

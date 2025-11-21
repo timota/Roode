@@ -8,14 +8,12 @@
 - Offset and crosstalk register writes.
 
 ## Missing / reduced vs Arduino backend
-- BUS selection relies on ESPHome I2C bus `get_port()`; if unavailable, defaults to port 0. TODO: verify against ESPHome IDF I2C API and plumb explicitly.
-- Offset/xTalk calibration flows (run-time calibration routines) are not ported; only stored-value setters exist. TODO: port calibration helpers from Arduino ULD or ST ULD.
-- Range status filtering mirrors ULD basic mapping but does not expose sigma/signal thresholds or detailed diagnostics. TODO: add thresholds and status sensors if needed.
-- Multi-sensor coord (address change sequencing across multiple XSHUT pins) simplified; restore detailed logging and retry counters as in legacy driver if required.
-- Timing budget encoding currently approximates macro period; for production, port full ULD timing calc to match all modes.
+- Offset/xTalk calibration flows: added single-shot offset calibrate helper; xtalk calibration still TODO (needs multi-sample routine per ULD).
+- Range status diagnostics: sigma/signal thresholds now settable; publishing extra diagnostics to ESPHome sensors is still optional/TODO.
+- Multi-sensor coordination: basic XSHUT sequencing restored; detailed retry/backoff metrics not yet ported.
+- Timing budget: moved to ULD-style macro-period calculation; confirm against all distance modes in field.
 
 ## TODOs
-- Confirm ESPHome I2C bus port retrieval and remove default-port fallback.
-- Add calibration routines (offset/xtalk) callable from Roode or a maintenance path.
-- Add sigma/signal threshold setters and status publish hooks for ESPHome sensors if desired.
-- Backport richer recovery/backoff logic and interrupt validation from the legacy Arduino driver if field data demands it.
+- Add xtalk calibration routine (multi-sample) and wire to Roode maintenance path.
+- Add optional ESPHome sensors to publish sigma/signal/range status for debugging.
+- Backport richer recovery/backoff logging and interrupt validation thresholds if field data demands it.

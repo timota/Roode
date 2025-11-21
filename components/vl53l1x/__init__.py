@@ -32,6 +32,8 @@ CONF_RANGING_MODE = "ranging"
 CONF_XSHUT = "xshut"
 CONF_XTALK = "crosstalk"
 CONF_SENSOR_ID = "sensor_id"
+CONF_SIGMA_THRESHOLD = "sigma_threshold"
+CONF_SIGNAL_THRESHOLD = "signal_threshold"
 
 Ranging = vl53l1x_ns.namespace("Ranging")
 RANGING_MODES = {
@@ -101,6 +103,8 @@ CONFIG_SCHEMA = (
                         cv.uint16_t,
                     ),
                     cv.Optional(CONF_OFFSET): cv.All(distance_as_mm, int16_t),
+                    cv.Optional(CONF_SIGMA_THRESHOLD): cv.All(distance_as_mm, cv.uint16_t),
+                    cv.Optional(CONF_SIGNAL_THRESHOLD): cv.uint16_t,
                 }
             ),
         }
@@ -156,3 +160,7 @@ async def setup_calibration(vl53l1x: cg.Pvariable, config: Dict):
         cg.add(vl53l1x.set_xtalk(config[CONF_XTALK]))
     if CONF_OFFSET in config:
         cg.add(vl53l1x.set_offset(config[CONF_OFFSET]))
+    if CONF_SIGMA_THRESHOLD in config:
+        cg.add(vl53l1x.set_sigma_threshold(config[CONF_SIGMA_THRESHOLD]))
+    if CONF_SIGNAL_THRESHOLD in config:
+        cg.add(vl53l1x.set_signal_threshold_kcps(config[CONF_SIGNAL_THRESHOLD]))
