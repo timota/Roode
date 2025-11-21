@@ -2,6 +2,9 @@
 #include "vl53l1x_idf.h"
 #include <cstdio>
 #include "esp_check.h"
+#ifdef USE_ESP_IDF
+#include "esphome/components/i2c/i2c_bus_esp_idf.h"
+#endif
 
 #if __has_include("../roode/roode.h")
 #define USE_ROODE_LOG 1
@@ -95,8 +98,7 @@ VL53L1_Error VL53L1X::init() {
   }
   i2c_port_t port = I2C_NUM_0;  // default
 #ifdef USE_ESP_IDF
-  // ESP-IDF shim exposes get_port() via esp-idf bus class; detect with RTTI
-  if (auto *idf_bus = dynamic_cast<esphome::i2c::ESPHomeI2CBus *>(bus)) {
+  if (auto *idf_bus = dynamic_cast<esphome::i2c::IDFI2CBus *>(bus)) {
     port = static_cast<i2c_port_t>(idf_bus->get_port());
   }
 #endif
