@@ -50,4 +50,3 @@ sensor:
   - platform: vl53l1x
     name: "${friendly_name} distance"
     id: tof_distance
-    update_interval: 500ms
