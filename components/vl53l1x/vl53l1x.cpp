@@ -486,17 +486,9 @@ void VL53L1X::start_auto_cal_async() {
   }
   if (!warm_ready) {
     auto_cal_warm_failures_++;
-    if (auto_cal_warm_failures_ > 3) {
-      ESP_LOGW(TAG, "Auto-cal warm-up failed %u times; proceeding anyway", auto_cal_warm_failures_);
-    } else {
-      ESP_LOGW(TAG, "Auto-cal warm-up measurement not ready; deferring auto-cal by 1s");
-      auto_cal_scheduled_ = true;
-      App.scheduler.set_timeout(this, "auto_cal_warm_retry", 1000, [this]() {
-        auto_cal_scheduled_ = false;
-        this->start_auto_cal_async();
-      });
-      return;
-    }
+    ESP_LOGW(TAG, "Auto-cal warm-up failed %u times; proceeding anyway", auto_cal_warm_failures_);
+  } else {
+    auto_cal_warm_failures_ = 0;
   }
   if (this->is_failed()) {
     ESP_LOGW(TAG, "Auto-calibration skipped: component is in failed state");
