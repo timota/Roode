@@ -284,7 +284,7 @@ void VL53L1X::schedule_interrupt_retry() {
   if (interrupt_retry_scheduled_) return;
   interrupt_retry_scheduled_ = true;
   // retry after 30 minutes
-  this->set_timeout(30 * 60 * 1000, [this]() {
+  this->set_timeout_fn(30 * 60 * 1000, [this]() {
     interrupt_retry_scheduled_ = false;
     if (this->interrupt_pin.has_value()) {
       bool ok = validate_interrupt();
