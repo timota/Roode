@@ -45,7 +45,9 @@ vl53l1x:
   timeout: 2000ms
   pins:
     xshut: GPIO16
-    interrupt: GPIO18
+    interrupt:
+      number: GPIO18
+      mode: INPUT_PULLUP  # change to INPUT_PULLDOWN if your board uses pull-down
   calibration:
     ranging: long
     # offset: 0mm
