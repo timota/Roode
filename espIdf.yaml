@@ -48,13 +48,14 @@ vl53l1x:
     xshut: GPIO16
     interrupt:
       number: GPIO18
-      mode: INPUT_PULLDOWN  # change to INPUT_PULLDOWN if your board uses pull-down
+      mode: INPUT_PULLUP  # change to INPUT_PULLDOWN if your board uses pull-down
   calibration:
     ranging: long
     # offset: 0mm
     # crosstalk: 0cps
     # sigma_threshold: 90mm
     # signal_threshold: 1024  # kcps
+  auto_calibration: true
   diagnostics:
     # optional binary_sensor that reflects current INT pin level (true = high)
     interrupt_state:
