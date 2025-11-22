@@ -232,7 +232,7 @@ void VL53L1X::schedule_timeout_recovery() {
       } else {
         self->timeout_recovery_scheduled_ = false;
       }
-    }, delay_ms);
+    });
   };
   schedule_stage(0);
 }
@@ -386,7 +386,7 @@ void VL53L1X::schedule_interrupt_retry() {
         schedule_interrupt_retry();
       }
     }
-  }, 30 * 60 * 1000);
+  });
 }
 void VL53L1X::restart() {
   if (this->xshut_pin.has_value()) {
