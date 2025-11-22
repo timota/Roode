@@ -89,6 +89,7 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   uint8_t desired_address_{0x29};
   bool calibration_services_enabled_{false};
   bool auto_calibration_enabled_{true};
+  bool auto_cal_scheduled_{false};
   static std::vector<VL53L1X *> sensors;
 
   VL53L1_Error init();

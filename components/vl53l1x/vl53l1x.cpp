@@ -460,11 +460,14 @@ void VL53L1X::update_interrupt_diagnostic() {
 }
 
 void VL53L1X::schedule_default_calibration() {
+  if (auto_cal_scheduled_) return;
+  auto_cal_scheduled_ = true;
   // Run shortly after init/restart to avoid blocking setup.
   App.scheduler.set_timeout(this, "auto_cal", 50, [this]() { this->run_default_calibration(); });
 }
 
 void VL53L1X::run_default_calibration() {
+  auto_cal_scheduled_ = false;
   ESP_LOGI(TAG, "Auto-calibration: starting (offset@200mm, xtalk@600mm)");
   int16_t offset_res = 0;
   uint16_t xtalk_res = 0;
@@ -540,11 +543,20 @@ VL53L1_Error VL53L1X::calibrate_xtalk_runtime(uint16_t target_distance_mm, uint8
       ESP_LOGW(TAG, "Xtalk start failed: %d", err);
       continue;
     }
-    bool ready = wait_ready(sensor_.get(), 600);
+    bool ready = wait_ready(sensor_.get(), 800);
     if (!ready) {
       sensor_->stop_ranging();
-      ESP_LOGW(TAG, "Xtalk sample %u timed out", i);
-      continue;
+      ESP_LOGW(TAG, "Xtalk sample %u timed out - retrying once after reset", i);
+      // Attempt one restart then retry wait once
+      this->restart();
+      err = sensor_->start_ranging();
+      if (err != ESP_OK) continue;
+      ready = wait_ready(sensor_.get(), 800);
+      if (!ready) {
+        sensor_->stop_ranging();
+        ESP_LOGW(TAG, "Xtalk sample %u timed out after retry", i);
+        continue;
+      }
     }
     vl53l1x_idf::Measurement m;
     err = sensor_->read_measurement(m);
