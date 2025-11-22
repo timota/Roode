@@ -16,7 +16,20 @@ We will execute these steps in order. After completing each step, update this fi
    - **DONE (initial sweep)**: Removed `Arduino.h` from Roode component; no other Arduino includes found. Further replacements will continue in later steps if any surface.
 
 4. Stabilize init & calibration flow under ESP-IDF  
-   - Simplify initialization, warm-up, and auto-calibration; ensure single, late, reliable auto-cal per boot; align wait timings with ULD guidance.
+   - Simplify initialization, warm-up, and auto-calibration; ensure single, late, reliable auto-cal per boot; align wait timings with ULD guidance.  
+   - **IN PROGRESS**: multiple attempts to delay/start auto-cal; still seeing early warm-up failures/timeouts.  
+   - Substeps (port features from current Arduino VL53L1X driver):
+     4.1 Init & boot: wait_for_boot sequencing; apply desired I2C address; handle address change safely.  
+     4.2 Ranging mode config: distance mode, timing budget, intermeasurement (per RangingMode table).  
+     4.3 ROI handling: per-read ROI set (width/height/center) with caching to avoid redundant writes.  
+     4.4 Data-ready flow: INT-based ready if validated; fallback to polling; miss counter and retry to polling; re-validate INT after cooldown.  
+     4.5 Timeout handling: on measurement timeout, power-cycle via XSHUT (if available), re-wait boot, record recovery count.  
+     4.6 Interrupt validation: validate pin at setup; disable INT if fails; schedule periodic re-validation.  
+     4.7 XSHUT sequencing for multi-sensor: pull peers low before init/address change; restore after.  
+     4.8 Calibration application (static): apply stored offset and xtalk values at setup.  
+     4.9 Error tracking: record_failure/consecutive_failures; mark_failed on hard errors.  
+     4.10 Logging parity: keep informative logs (setup, pins, timeouts, recoveries) without Roode-only calls.  
+     4.11 Auto-calibration (new flow under IDF): single late on_boot trigger, ULD-like timing windows, one controlled retry.
 
 5. Clean build & runtime under `framework: esp-idf`  
    - Ensure `esphome compile espIdf.yaml` succeeds; resolve I2C conflicts; verify logs show stable start-up without calibration spam.
