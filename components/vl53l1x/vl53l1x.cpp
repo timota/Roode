@@ -16,6 +16,9 @@ namespace vl53l1x {
 
 std::vector<VL53L1X *> VL53L1X::sensors{};
 
+// Forward declaration for data-ready wait helper
+static bool wait_ready(vl53l1x_idf::VL53L1XIDF *sensor, uint32_t timeout_ms);
+
 VL53L1X::VL53L1X() = default;
 
 VL53L1X::~VL53L1X() {
