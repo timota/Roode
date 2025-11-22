@@ -23,6 +23,7 @@ wifi:
 
 api:
   password: !secret api_key
+  custom_services: true
 
 ota:
   platform: esphome
@@ -47,7 +48,7 @@ vl53l1x:
     xshut: GPIO16
     interrupt:
       number: GPIO18
-      mode: INPUT_PULLUP  # change to INPUT_PULLDOWN if your board uses pull-down
+      mode: INPUT_PULLDOWN  # change to INPUT_PULLDOWN if your board uses pull-down
   calibration:
     ranging: long
     # offset: 0mm
