@@ -477,7 +477,7 @@ void VL53L1X::start_auto_cal_async() {
   if (sensor_ != nullptr) {
     auto err = sensor_->start_ranging();
     if (err == ESP_OK) {
-      warm_ready = wait_ready(sensor_.get(), 300);
+      warm_ready = wait_ready(sensor_.get(), 800);
       sensor_->clear_interrupt();
       sensor_->stop_ranging();
     } else {
@@ -494,6 +494,12 @@ void VL53L1X::start_auto_cal_async() {
     ESP_LOGW(TAG, "Auto-calibration skipped: component is in failed state");
     return;
   }
+  // Save current mode to restore after calibration
+  auto_cal_saved_mode_ = this->ranging_mode;
+  // Apply calibration profile (full ROI, longer budget)
+    sensor_->set_roi({16, 16, 199});
+    sensor_->set_timing_budget_us(50000);
+    sensor_->set_intermeasurement_us(60000);
   auto_cal_running_ = true;
   auto_cal_state_ = {};
   auto_cal_state_.phase = AutoCalPhase::OFFSET_WARM_START;
@@ -544,7 +550,7 @@ void VL53L1X::auto_cal_step() {
         App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
         break;
       }
-      st.deadline_ms = millis() + 800;
+      st.deadline_ms = millis() + 2500;
       st.phase = AutoCalPhase::OFFSET_WAIT;
       App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
       break;
@@ -595,7 +601,7 @@ void VL53L1X::auto_cal_step() {
         App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
         break;
       }
-      st.deadline_ms = millis() + 1000;
+      st.deadline_ms = millis() + 3000;
       st.phase = AutoCalPhase::XTALK_WAIT;
       App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
       break;
@@ -653,7 +659,7 @@ void VL53L1X::auto_cal_step() {
       auto_cal_running_ = false;
       bool success = (st.offset_ok > 0 && st.xtalk_ok > 0);
       auto_cal_done_ = success;
-      if (!success && auto_cal_retries_ < 2) {
+      if (!success && auto_cal_retries_ < 1) {
         auto_cal_retry_pending_ = true;
         auto_cal_retries_++;
         ESP_LOGW(TAG, "Auto-cal failed; scheduling retry #%u in 5s", auto_cal_retries_);
@@ -663,6 +669,9 @@ void VL53L1X::auto_cal_step() {
         });
       } else if (!success) {
         ESP_LOGW(TAG, "Auto-cal failed after retries; giving up for this boot");
+      }
+      if (auto_cal_saved_mode_ != nullptr) {
+        set_ranging_mode(auto_cal_saved_mode_);
       }
       st.phase = AutoCalPhase::IDLE;
       break;
@@ -676,7 +685,7 @@ void VL53L1X::auto_cal_step() {
 void VL53L1X::schedule_default_calibration() {
   if (auto_cal_scheduled_) return;
   auto_cal_scheduled_ = true;
-  // Run shortly after init/restart to avoid blocking setup.
+  // Kept for manual calls; main trigger now via on_boot.
   App.scheduler.set_timeout(this, "auto_cal", auto_cal_delay_ms_, [this]() { this->start_auto_cal_async(); });
 }
 

@@ -116,8 +116,9 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   bool auto_cal_done_{false};
   bool auto_cal_retry_pending_{false};
   uint8_t auto_cal_retries_{0};
-  uint32_t auto_cal_delay_ms_{6000};  // grace period after init before first auto-cal
+  uint32_t auto_cal_delay_ms_{2500};  // on_boot delay before first auto-cal
   uint8_t auto_cal_warm_failures_{0};
+  const RangingMode *auto_cal_saved_mode_{nullptr};
   AutoCalState auto_cal_state_{};
   static std::vector<VL53L1X *> sensors;
 
