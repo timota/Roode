@@ -83,6 +83,18 @@ void VL53L1X::setup() {
     }
   }
 
+  // Validate INT if present; otherwise fall back to polling with scheduled retries.
+  if (this->interrupt_pin.has_value()) {
+    interrupt_active_ = validate_interrupt();
+    interrupt_miss_count_ = 0;
+    if (!interrupt_active_) {
+      ESP_LOGW(TAG, "INT validation failed, using polling and scheduling retry");
+      schedule_interrupt_retry();
+    } else {
+      ESP_LOGI(TAG, "INT validation succeeded");
+    }
+  }
+
   ESP_LOGI(TAG, "Setup complete");
 }
 
@@ -182,19 +194,26 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   bool ready = false;
   auto start_time = millis();
-  bool use_int = this->interrupt_pin.has_value();
+  bool use_int = interrupt_active_ && this->interrupt_pin.has_value();
   bool initial_state = false;
   if (use_int) {
     initial_state = this->interrupt_pin.value()->digital_read();
   }
-  while (!ready && (millis() - start_time) < this->timeout) {
-    if (use_int) {
-      if (this->interrupt_pin.value()->digital_read() != initial_state) {
-        ready = true;
-      }
-    } else {
-      sensor_->check_data_ready(ready);
+
+  // Phase A: small window waiting for INT toggle
+  uint32_t phase_a_ms = std::min<uint32_t>(5, this->timeout / 4);
+  while (!ready && (millis() - start_time) < phase_a_ms) {
+    if (use_int && this->interrupt_pin.value()->digital_read() != initial_state) {
+      ready = true;
+      break;
     }
+    delay(1);
+    App.feed_wdt();
+  }
+
+  // Phase B: fallback to data-ready polling for remaining timeout
+  while (!ready && (millis() - start_time) < this->timeout) {
+    sensor_->check_data_ready(ready);
     if (!ready) {
       delay(1);
       App.feed_wdt();
@@ -206,6 +225,15 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
     sensor_->stop_ranging();
     if (this->xshut_pin.has_value()) {
       this->restart();
+    }
+    if (use_int) {
+      interrupt_miss_count_++;
+      if (interrupt_miss_count_ >= 3) {
+        interrupt_active_ = false;
+        interrupt_miss_count_ = 0;
+        ESP_LOGW(TAG, "INT missed 3 times; falling back to polling and scheduling retry");
+        schedule_interrupt_retry();
+      }
     }
     return {};
   }
@@ -231,7 +259,46 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 }
 
 bool VL53L1X::check_features() { return true; }
-bool VL53L1X::validate_interrupt() { return false; }
+bool VL53L1X::validate_interrupt() {
+  if (!this->interrupt_pin.has_value()) return false;
+
+  bool initial = this->interrupt_pin.value()->digital_read();
+  auto status = sensor_->start_ranging();
+  if (status != ESP_OK) return false;
+
+  bool ok = false;
+  uint32_t start = millis();
+  while ((millis() - start) < 25) {  // short validation window ~25ms
+    if (this->interrupt_pin.value()->digital_read() != initial) {
+      ok = true;
+      break;
+    }
+    delay(1);
+  }
+  sensor_->clear_interrupt();
+  sensor_->stop_ranging();
+  return ok;
+}
+
+void VL53L1X::schedule_interrupt_retry() {
+  if (interrupt_retry_scheduled_) return;
+  interrupt_retry_scheduled_ = true;
+  // retry after 30 minutes
+  this->set_timeout(30 * 60 * 1000, [this]() {
+    interrupt_retry_scheduled_ = false;
+    if (this->interrupt_pin.has_value()) {
+      bool ok = validate_interrupt();
+      if (ok) {
+        interrupt_active_ = true;
+        interrupt_miss_count_ = 0;
+        ESP_LOGI(TAG, "INT recovered after retry");
+      } else {
+        ESP_LOGW(TAG, "INT retry failed, staying on polling");
+        schedule_interrupt_retry();
+      }
+    }
+  });
+}
 void VL53L1X::restart() {
   if (this->xshut_pin.has_value()) {
     this->xshut_pin.value()->digital_write(false);

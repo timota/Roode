@@ -7,6 +7,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/gpio.h"
 #include "esphome/core/log.h"
+#include <memory>
 #include "ranging.h"
 #include "roi.h"
 #include "vl53l1x_idf.h"
@@ -63,7 +64,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   bool is_interrupt_enabled() const { return false; }
 
  protected:
-  vl53l1x_idf::VL53L1XIDF sensor_;
+  std::unique_ptr<vl53l1x_idf::VL53L1XIDF> sensor_;
   optional<GPIOPin *> xshut_pin{};
   optional<InternalGPIOPin *> interrupt_pin{};
   const RangingMode * ranging_mode{};
@@ -89,10 +90,14 @@ class VL53L1X : public i2c::I2CDevice, public Component {
    */
   bool check_features();
   bool validate_interrupt();
+  void schedule_interrupt_retry();
 
   void soft_reset();
   void record_failure();
   uint8_t consecutive_failures_{0};
+  bool interrupt_active_{false};
+  uint8_t interrupt_miss_count_{0};
+  bool interrupt_retry_scheduled_{false};
 };
 
 }  // namespace vl53l1x
