@@ -204,22 +204,29 @@ void VL53L1X::schedule_timeout_recovery() {
   if (timeout_recovery_scheduled_) return;
   timeout_recovery_scheduled_ = true;
 
-  // small backoff sequence: 0s, 1s, 4s -> then bus reset
-  std::vector<uint32_t> backoff_ms = {0, 1000, 4000};
+  // small backoff sequence: 0s, 0.5s, 2s -> then bus reset
+  std::vector<uint32_t> backoff_ms = {0, 500, 2000};
   auto self = this;
   std::function<void(size_t)> schedule_stage = [&](size_t idx) {
     if (idx >= backoff_ms.size()) {
-      // Perform coordinated bus reset
-      ESP_LOGW(TAG, "Executing coordinated bus reset after repeated timeouts");
-      coordinated_bus_reset();
+      // Perform coordinated bus reset if not in cooldown
+      if (!bus_reset_cooldown_) {
+        ESP_LOGW(TAG, "Executing coordinated bus reset after repeated errors");
+        coordinated_bus_reset();
+        bus_reset_cooldown_ = true;
+        this->set_timeout_fn(30 * 60 * 1000, [this]() { bus_reset_cooldown_ = false; });
+      } else {
+        ESP_LOGW(TAG, "Bus reset cooldown active; skipping bus reset");
+      }
       consecutive_timeouts_ = 0;
+      consecutive_i2c_errors_ = 0;
       timeout_recovery_scheduled_ = false;
       return;
     }
     this->set_timeout_fn(backoff_ms[idx], [self, idx, &schedule_stage]() {
       ESP_LOGW(TAG, "Timeout recovery backoff stage %zu", idx);
       self->restart();
-      if (self->consecutive_timeouts_ >= 3) {
+      if (self->consecutive_timeouts_ >= 3 || self->consecutive_i2c_errors_ >= 3) {
         schedule_stage(idx + 1);
       } else {
         self->timeout_recovery_scheduled_ = false;
@@ -240,12 +247,22 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   status = sensor_->set_roi({roi->width, roi->height, roi->center});
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not set ROI, error: %d", status);
+    consecutive_i2c_errors_++;
+    if (consecutive_i2c_errors_ >= 3) {
+      ESP_LOGW(TAG, "Three consecutive I2C errors on set_roi; scheduling recovery");
+      schedule_timeout_recovery();
+    }
     return {};
   }
 
   status = sensor_->start_ranging();
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Failed to start ranging, error: %d", status);
+    consecutive_i2c_errors_++;
+    if (consecutive_i2c_errors_ >= 3) {
+      ESP_LOGW(TAG, "Three consecutive I2C errors on start_ranging; scheduling recovery");
+      schedule_timeout_recovery();
+    }
     return {};
   }
 
@@ -308,6 +325,11 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not get distance, error: %d", status);
+    consecutive_i2c_errors_++;
+    if (consecutive_i2c_errors_ >= 3) {
+      ESP_LOGW(TAG, "Three consecutive I2C errors on read/clear/stop; scheduling recovery");
+      schedule_timeout_recovery();
+    }
     return {};
   }
 
@@ -320,6 +342,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   status = ESP_OK;
   consecutive_timeouts_ = 0;
+  consecutive_i2c_errors_ = 0;
   return {m.distance_mm};
 }
 

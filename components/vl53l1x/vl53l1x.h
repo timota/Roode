@@ -106,6 +106,8 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   bool interrupt_retry_scheduled_{false};
   uint8_t consecutive_timeouts_{0};
   bool timeout_recovery_scheduled_{false};
+  uint8_t consecutive_i2c_errors_{0};
+  bool bus_reset_cooldown_{false};
 };
 
 }  // namespace vl53l1x
