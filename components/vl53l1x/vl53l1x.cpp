@@ -214,7 +214,9 @@ void VL53L1X::schedule_timeout_recovery() {
         ESP_LOGW(TAG, "Executing coordinated bus reset after repeated errors");
         coordinated_bus_reset();
         bus_reset_cooldown_ = true;
-        this->set_timeout_fn(30 * 60 * 1000, [this]() { bus_reset_cooldown_ = false; });
+        this->set_timeout(30 * 60 * 1000);
+        // emulate set_timeout_fn: simple one-shot using delayed lambda via App.schedule
+        App.schedule([this]() { bus_reset_cooldown_ = false; });
       } else {
         ESP_LOGW(TAG, "Bus reset cooldown active; skipping bus reset");
       }
@@ -223,7 +225,8 @@ void VL53L1X::schedule_timeout_recovery() {
       timeout_recovery_scheduled_ = false;
       return;
     }
-    this->set_timeout_fn(backoff_ms[idx], [self, idx, &schedule_stage]() {
+    uint32_t delay_ms = backoff_ms[idx];
+    App.schedule([self, idx, &schedule_stage]() {
       ESP_LOGW(TAG, "Timeout recovery backoff stage %zu", idx);
       self->restart();
       if (self->consecutive_timeouts_ >= 3 || self->consecutive_i2c_errors_ >= 3) {
@@ -231,7 +234,7 @@ void VL53L1X::schedule_timeout_recovery() {
       } else {
         self->timeout_recovery_scheduled_ = false;
       }
-    });
+    }, delay_ms);
   };
   schedule_stage(0);
 }
@@ -372,7 +375,7 @@ void VL53L1X::schedule_interrupt_retry() {
   if (interrupt_retry_scheduled_) return;
   interrupt_retry_scheduled_ = true;
   // retry after 30 minutes
-  this->set_timeout_fn(30 * 60 * 1000, [this]() {
+  App.schedule([this]() {
     interrupt_retry_scheduled_ = false;
     if (this->interrupt_pin.has_value()) {
       bool ok = validate_interrupt();
@@ -385,7 +388,7 @@ void VL53L1X::schedule_interrupt_retry() {
         schedule_interrupt_retry();
       }
     }
-  });
+  }, 30 * 60 * 1000);
 }
 void VL53L1X::restart() {
   if (this->xshut_pin.has_value()) {
