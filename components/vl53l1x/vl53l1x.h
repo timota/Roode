@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "esphome/components/i2c/i2c.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/core/application.h"
 #include "esphome/core/component.h"
 #include "esphome/core/gpio.h"
@@ -61,13 +62,14 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void set_timeout(uint16_t val) { this->timeout = val; }
   void set_sigma_threshold(uint16_t mm) { this->sigma_threshold_mm = mm; }
   void set_signal_threshold_kcps(uint16_t kcps) { this->signal_threshold_kcps = kcps; }
-  void set_interrupt_active_high(bool val) { this->interrupt_active_high = val; }
+  void set_interrupt_state_sensor(binary_sensor::BinarySensor *sensor) { this->interrupt_state_sensor_ = sensor; }
   bool is_interrupt_enabled() const { return false; }
 
  protected:
   std::unique_ptr<vl53l1x_idf::VL53L1XIDF> sensor_;
   optional<GPIOPin *> xshut_pin{};
   optional<InternalGPIOPin *> interrupt_pin{};
+  optional<binary_sensor::BinarySensor *> interrupt_state_sensor_{};
   const RangingMode * ranging_mode{};
   /** Mode from user config, which can be get/set independently of current mode */
   optional<const RangingMode *> ranging_mode_override{};
@@ -75,7 +77,6 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   optional<uint16_t> xtalk{};
   optional<uint16_t> sigma_threshold_mm{};
   optional<uint16_t> signal_threshold_kcps{};
-  bool interrupt_active_high{false};
   uint16_t timeout{};
   int recovery_count_{0};
   uint8_t bus_reset_count_{0};
@@ -99,11 +100,13 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void apply_calibration_and_thresholds();
   void log_reason(const char *reason);
   void schedule_timeout_recovery();
+  void update_interrupt_diagnostic();
 
   void soft_reset();
   void record_failure();
   uint8_t consecutive_failures_{0};
   bool interrupt_active_{false};
+  bool interrupt_active_low_{true};
   uint8_t interrupt_miss_count_{0};
   bool interrupt_retry_scheduled_{false};
   uint8_t consecutive_timeouts_{0};

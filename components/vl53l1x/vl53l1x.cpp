@@ -4,6 +4,7 @@
 #include <memory>
 #include "esp_check.h"
 #include "esphome/core/hal.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 
 #if __has_include("../roode/roode.h")
 #define USE_ROODE_LOG 1
@@ -45,8 +46,8 @@ void VL53L1X::dump_config() {
   LOG_PIN("  Interrupt Pin: ", this->interrupt_pin.value());
   LOG_PIN("  XShut Pin: ", this->xshut_pin.value());
   ESP_LOGCONFIG(TAG, "  INT active: %s", interrupt_active_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  INT polarity (derived): %s", interrupt_active_low_ ? "active-low" : "active-high");
   ESP_LOGCONFIG(TAG, "  INT miss count: %u", interrupt_miss_count_);
-  ESP_LOGCONFIG(TAG, "  INT polarity: %s", interrupt_active_high ? "active_high" : "active_low");
   ESP_LOGCONFIG(TAG, "  Recovery count: %u", recovery_count_);
   ESP_LOGCONFIG(TAG, "  Bus reset count: %u", bus_reset_count_);
 }
@@ -66,9 +67,16 @@ void VL53L1X::setup() {
   }
 
   if (this->interrupt_pin.has_value()) {
-    this->interrupt_pin.value()->pin_mode(gpio::FLAG_INPUT | gpio::FLAG_PULLUP);
+    auto flags = this->interrupt_pin.value()->get_flags();
+    // ensure input flag is set
+    flags = static_cast<gpio::Flags>(flags | gpio::FLAG_INPUT);
+    this->interrupt_pin.value()->pin_mode(flags);
     this->interrupt_pin.value()->setup();
-    ESP_LOGD(TAG, "INT initial state: %d", this->interrupt_pin.value()->digital_read());
+    interrupt_active_low_ = !(flags & gpio::FLAG_PULLDOWN);
+    ESP_LOGD(TAG, "INT initial state: %d (flags: 0x%02x, inferred polarity: %s)",
+             this->interrupt_pin.value()->digital_read(), static_cast<int>(flags),
+             interrupt_active_low_ ? "active-low (pull-up/default)" : "active-high (pull-down)");
+    update_interrupt_diagnostic();
   }
 
   auto status = this->init();
@@ -285,11 +293,12 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   bool initial_state = false;
   if (use_int) {
     initial_state = this->interrupt_pin.value()->digital_read();
+    update_interrupt_diagnostic();
   }
 
   // Phase A: small window waiting for INT to reach expected polarity
   auto is_int_active = [&](bool level) {
-    return interrupt_active_high ? level : !level;
+    return interrupt_active_low_ ? !level : level;
   };
 
   uint32_t phase_a_ms = std::min<uint32_t>(5, this->timeout / 4);
@@ -339,6 +348,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   status = sensor_->read_measurement(m);
   sensor_->clear_interrupt();
   sensor_->stop_ranging();
+  update_interrupt_diagnostic();
 
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Could not get distance, error: %d", status);
@@ -374,8 +384,8 @@ bool VL53L1X::validate_interrupt() {
   bool ok = false;
   uint32_t start = millis();
   while ((millis() - start) < 25) {  // short validation window ~25ms
-    if (interrupt_active_high ? this->interrupt_pin.value()->digital_read()
-                              : !this->interrupt_pin.value()->digital_read()) {
+    if (interrupt_active_low_ ? !this->interrupt_pin.value()->digital_read()
+                              : this->interrupt_pin.value()->digital_read()) {
       ok = true;
       break;
     }
@@ -383,6 +393,7 @@ bool VL53L1X::validate_interrupt() {
   }
   sensor_->clear_interrupt();
   sensor_->stop_ranging();
+  update_interrupt_diagnostic();
   return ok;
 }
 
@@ -423,6 +434,12 @@ void VL53L1X::record_failure() {
     restart();
     consecutive_failures_ = 0;
   }
+}
+
+void VL53L1X::update_interrupt_diagnostic() {
+  if (!interrupt_state_sensor_.has_value() || !this->interrupt_pin.has_value()) return;
+  bool level = this->interrupt_pin.value()->digital_read();
+  interrupt_state_sensor_.value()->publish_state(level);
 }
 
 }  // namespace vl53l1x

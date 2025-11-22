@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any
-from esphome.components import i2c
+from esphome.components import i2c, binary_sensor
 from esphome.core import CORE
 import esphome.codegen as cg
 import esphome.config_validation as cv
@@ -20,7 +20,7 @@ import esphome.pins as pins
 _LOGGER = logging.getLogger(__name__)
 
 DEPENDENCIES = ["i2c"]
-AUTO_LOAD = ["i2c"]
+AUTO_LOAD = ["i2c", "binary_sensor"]
 MULTI_CONF = True
 
 vl53l1x_ns = cg.esphome_ns.namespace("vl53l1x")
@@ -34,13 +34,8 @@ CONF_XTALK = "crosstalk"
 CONF_SENSOR_ID = "sensor_id"
 CONF_SIGMA_THRESHOLD = "sigma_threshold"
 CONF_SIGNAL_THRESHOLD = "signal_threshold"
-CONF_INT_POLARITY = "interrupt_polarity"
-
-INT_POLARITIES = {
-    "active_low": False,
-    "active_high": True,
-}
-
+CONF_DIAGNOSTICS = "diagnostics"
+CONF_INT_STATE = "interrupt_state"
 Ranging = vl53l1x_ns.namespace("Ranging")
 RANGING_MODES = {
     CONF_AUTO: CONF_AUTO,
@@ -113,7 +108,11 @@ CONFIG_SCHEMA = (
                     cv.Optional(CONF_SIGNAL_THRESHOLD): cv.uint16_t,
                 }
             ),
-            cv.Optional(CONF_INT_POLARITY, default="active_low"): cv.enum(INT_POLARITIES, lower=True),
+            cv.Optional(CONF_DIAGNOSTICS, default={}): NullableSchema(
+                {
+                    cv.Optional(CONF_INT_STATE): binary_sensor.binary_sensor_schema(),
+                }
+            ),
         }
     )
     .extend(i2c.i2c_device_schema(0x29))
@@ -147,7 +146,8 @@ async def to_code(config: Dict):
 
     cg.add(vl53l1x.set_timeout(config[CONF_TIMEOUT]))
     await setup_hardware(vl53l1x, config)
-    await setup_calibration(vl53l1x, config[CONF_CALIBRATION], config.get(CONF_INT_POLARITY, "active_low"))
+    await setup_calibration(vl53l1x, config[CONF_CALIBRATION])
+    await setup_diagnostics(vl53l1x, config[CONF_DIAGNOSTICS])
 
 
 async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
@@ -160,16 +160,20 @@ async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
         cg.add(vl53l1x.set_xshut_pin(xshut))
 
 
-async def setup_calibration(vl53l1x: cg.Pvariable, config: Dict, int_polarity: str):
+async def setup_calibration(vl53l1x: cg.Pvariable, config: Dict):
     if config.get(CONF_RANGING_MODE, CONF_AUTO) != CONF_AUTO:
         cg.add(vl53l1x.set_ranging_mode_override(config[CONF_RANGING_MODE]))
     if CONF_XTALK in config:
         cg.add(vl53l1x.set_xtalk(config[CONF_XTALK]))
     if CONF_OFFSET in config:
         cg.add(vl53l1x.set_offset(config[CONF_OFFSET]))
-    cg.add(vl53l1x.set_interrupt_active_high(INT_POLARITIES[int_polarity]))
     if CONF_SIGMA_THRESHOLD in config:
         cg.add(vl53l1x.set_sigma_threshold(config[CONF_SIGMA_THRESHOLD]))
     if CONF_SIGNAL_THRESHOLD in config:
         cg.add(vl53l1x.set_signal_threshold_kcps(config[CONF_SIGNAL_THRESHOLD]))
-    cg.add(vl53l1x.set_interrupt_active_high(INT_POLARITIES[config[CONF_INT_POLARITY]]))
+
+
+async def setup_diagnostics(vl53l1x: cg.Pvariable, config: Dict):
+    if CONF_INT_STATE in config:
+        sensor = await binary_sensor.new_binary_sensor(config[CONF_INT_STATE])
+        cg.add(vl53l1x.set_interrupt_state_sensor(sensor))
