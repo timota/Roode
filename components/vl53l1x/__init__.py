@@ -147,7 +147,7 @@ async def to_code(config: Dict):
 
     cg.add(vl53l1x.set_timeout(config[CONF_TIMEOUT]))
     await setup_hardware(vl53l1x, config)
-    await setup_calibration(vl53l1x, config[CONF_CALIBRATION])
+    await setup_calibration(vl53l1x, config[CONF_CALIBRATION], config.get(CONF_INT_POLARITY, "active_low"))
 
 
 async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
@@ -160,13 +160,14 @@ async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
         cg.add(vl53l1x.set_xshut_pin(xshut))
 
 
-async def setup_calibration(vl53l1x: cg.Pvariable, config: Dict):
+async def setup_calibration(vl53l1x: cg.Pvariable, config: Dict, int_polarity: str):
     if config.get(CONF_RANGING_MODE, CONF_AUTO) != CONF_AUTO:
         cg.add(vl53l1x.set_ranging_mode_override(config[CONF_RANGING_MODE]))
     if CONF_XTALK in config:
         cg.add(vl53l1x.set_xtalk(config[CONF_XTALK]))
     if CONF_OFFSET in config:
         cg.add(vl53l1x.set_offset(config[CONF_OFFSET]))
+    cg.add(vl53l1x.set_interrupt_active_high(INT_POLARITIES[int_polarity]))
     if CONF_SIGMA_THRESHOLD in config:
         cg.add(vl53l1x.set_sigma_threshold(config[CONF_SIGMA_THRESHOLD]))
     if CONF_SIGNAL_THRESHOLD in config:
