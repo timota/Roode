@@ -475,19 +475,28 @@ void VL53L1X::start_auto_cal_async() {
   // Ensure a quick warm measurement before starting; if not ready, defer.
   bool warm_ready = false;
   if (sensor_ != nullptr) {
-    sensor_->start_ranging();
-    warm_ready = wait_ready(sensor_.get(), 300);
-    sensor_->clear_interrupt();
-    sensor_->stop_ranging();
+    auto err = sensor_->start_ranging();
+    if (err == ESP_OK) {
+      warm_ready = wait_ready(sensor_.get(), 300);
+      sensor_->clear_interrupt();
+      sensor_->stop_ranging();
+    } else {
+      ESP_LOGW(TAG, "Auto-cal warm-up start_ranging failed: %d", err);
+    }
   }
   if (!warm_ready) {
-    ESP_LOGW(TAG, "Auto-cal warm-up measurement not ready; deferring auto-cal by 1s");
-    auto_cal_scheduled_ = true;
-    App.scheduler.set_timeout(this, "auto_cal_warm_retry", 1000, [this]() {
-      auto_cal_scheduled_ = false;
-      this->start_auto_cal_async();
-    });
-    return;
+    auto_cal_warm_failures_++;
+    if (auto_cal_warm_failures_ > 3) {
+      ESP_LOGW(TAG, "Auto-cal warm-up failed %u times; proceeding anyway", auto_cal_warm_failures_);
+    } else {
+      ESP_LOGW(TAG, "Auto-cal warm-up measurement not ready; deferring auto-cal by 1s");
+      auto_cal_scheduled_ = true;
+      App.scheduler.set_timeout(this, "auto_cal_warm_retry", 1000, [this]() {
+        auto_cal_scheduled_ = false;
+        this->start_auto_cal_async();
+      });
+      return;
+    }
   }
   if (this->is_failed()) {
     ESP_LOGW(TAG, "Auto-calibration skipped: component is in failed state");
