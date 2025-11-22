@@ -12,7 +12,8 @@ We will execute these steps in order. After completing each step, update this fi
    - Rule: do not introduce new Arduino calls; removal of existing includes will be handled in later steps.
 
 3. Replace Arduino-specific APIs with ESPHome abstractions  
-   - Use `esphome::i2c::I2CDevice`, `millis()/delay()`, scheduler, GPIOPin, etc. Remove direct ESP-IDF and Arduino calls in driver/component code.
+   - Use `esphome::i2c::I2CDevice`, `millis()/delay()`, scheduler, GPIOPin, etc. Remove direct ESP-IDF and Arduino calls in driver/component code.  
+   - **DONE (initial sweep)**: Removed `Arduino.h` from Roode component; no other Arduino includes found. Further replacements will continue in later steps if any surface.
 
 4. Stabilize init & calibration flow under ESP-IDF  
    - Simplify initialization, warm-up, and auto-calibration; ensure single, late, reliable auto-cal per boot; align wait timings with ULD guidance.
