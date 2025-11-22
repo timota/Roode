@@ -52,7 +52,10 @@ vl53l1x:
     # crosstalk: 0cps
     # sigma_threshold: 90mm
     # signal_threshold: 1024  # kcps
-  interrupt_polarity: active_low  # or active_high
+  diagnostics:
+    # optional binary_sensor that reflects current INT pin level (true = high)
+    interrupt_state:
+      name: "${friendly_name} INT level"
 
 # Optional distance sensor (publishes readings). Roode can operate without it.
 #sensor:
