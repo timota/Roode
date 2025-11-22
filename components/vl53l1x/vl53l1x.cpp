@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <memory>
 #include "esp_check.h"
+#include "esphome/core/hal.h"
 
 #if __has_include("../roode/roode.h")
 #define USE_ROODE_LOG 1
@@ -88,20 +89,11 @@ void VL53L1X::setup() {
 VL53L1_Error VL53L1X::init() {
   ESP_LOGD(TAG, "Trying to initialize");
 
-  // Configure low-level driver with current address and actual I2C port
   auto *bus = this->bus_;
   if (bus == nullptr) {
     ESP_LOGE(TAG, "No I2C bus bound to VL53L1X device");
     return ESP_FAIL;
   }
-  i2c_port_t port = I2C_NUM_0;  // default
-#ifdef USE_ESP_IDF
-  // Avoid RTTI: IDFI2CBus exposes get_port(); we know ESPHome uses it under IDF builds
-  esphome::i2c::IDFI2CBus *idf_bus = static_cast<esphome::i2c::IDFI2CBus *>(bus);
-  if (idf_bus != nullptr) {
-    port = static_cast<i2c_port_t>(idf_bus->get_port());
-  }
-#endif
   sensor_ = std::make_unique<vl53l1x_idf::VL53L1XIDF>(bus, this->address_);
 
   auto err = sensor_->init();
