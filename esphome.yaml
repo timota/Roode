@@ -1,0 +1,45 @@
+esphome:
+  name: roode32idf
+  friendly_name: roode32idf
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: DEBUG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+
+api:
+  password: !secret api_key
+
+ota:
+  password: !secret ota_password
+
+external_components:
+  - source: components
+
+i2c:
+  - id: bus_a
+    sda: GPIO21
+    scl: GPIO22
+    scan: true
+
+vl53l1x:
+  - id: tof_sensor_1
+    i2c_id: bus_a
+    timeout: 2000ms
+    pins:
+      xshut: GPIO16
+      interrupt:
+        number: GPIO18
+        mode: INPUT_PULLUP
+    calibration:
+      ranging: long
+    auto_calibration: true
+
