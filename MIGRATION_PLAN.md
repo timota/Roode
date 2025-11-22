@@ -2,8 +2,10 @@
 
 We will execute these steps in order. After completing each step, update this file: mark it **DONE**, add a short note, and keep commits small and focused.
 
-1. Review prior spike work and notes  
-   - Read `README_idf_gap.md`, recent VL53L1X commits, and espIdf.yaml to understand current gaps and regressions.
+1. Review prior spike work and notes **DONE**  
+   - `README_idf_gap.md` is no longer present; reviewed current VL53L1X spike code and espIdf.yaml.  
+   - Current pain points: auto-cal start timing/timeout instability, on_boot trigger removed; build now succeeds.  
+   - Example config uses esp-idf I2C bus with INT/XSHUT pins; Arduino support already unused here.
 
 2. Freeze Arduino usage (stop adding new Arduino deps)  
    - Audit VL53L1X/Roode for Arduino APIs. Avoid new Arduino calls while migrating.
@@ -28,4 +30,3 @@ We will execute these steps in order. After completing each step, update this fi
 
 9. Final verification  
    - Run compile/test; confirm runtime logs; summarize remaining risks or follow-ups.
-
