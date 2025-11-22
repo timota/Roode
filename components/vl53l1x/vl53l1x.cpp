@@ -40,12 +40,13 @@ void VL53L1X::dump_config() {
     ESP_LOGCONFIG(TAG, "  Offset: %dmm", this->offset.value());
   }
   if (xtalk.has_value()) {
-    ESP_LOGCONFIG(TAG, "  XTalk: %dcps", this->xtalk.value());
+  ESP_LOGCONFIG(TAG, "  XTalk: %dcps", this->xtalk.value());
   }
   LOG_PIN("  Interrupt Pin: ", this->interrupt_pin.value());
   LOG_PIN("  XShut Pin: ", this->xshut_pin.value());
   ESP_LOGCONFIG(TAG, "  INT active: %s", interrupt_active_ ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "  INT miss count: %u", interrupt_miss_count_);
+  ESP_LOGCONFIG(TAG, "  INT polarity: %s", interrupt_active_high ? "active_high" : "active_low");
   ESP_LOGCONFIG(TAG, "  Recovery count: %u", recovery_count_);
   ESP_LOGCONFIG(TAG, "  Bus reset count: %u", bus_reset_count_);
 }
@@ -286,10 +287,14 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
     initial_state = this->interrupt_pin.value()->digital_read();
   }
 
-  // Phase A: small window waiting for INT toggle
+  // Phase A: small window waiting for INT to reach expected polarity
+  auto is_int_active = [&](bool level) {
+    return interrupt_active_high ? level : !level;
+  };
+
   uint32_t phase_a_ms = std::min<uint32_t>(5, this->timeout / 4);
   while (!ready && (millis() - start_time) < phase_a_ms) {
-    if (use_int && this->interrupt_pin.value()->digital_read() != initial_state) {
+    if (use_int && is_int_active(this->interrupt_pin.value()->digital_read())) {
       ready = true;
       break;
     }
@@ -369,7 +374,8 @@ bool VL53L1X::validate_interrupt() {
   bool ok = false;
   uint32_t start = millis();
   while ((millis() - start) < 25) {  // short validation window ~25ms
-    if (this->interrupt_pin.value()->digital_read() != initial) {
+    if (interrupt_active_high ? this->interrupt_pin.value()->digital_read()
+                              : !this->interrupt_pin.value()->digital_read()) {
       ok = true;
       break;
     }

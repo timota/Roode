@@ -34,6 +34,12 @@ CONF_XTALK = "crosstalk"
 CONF_SENSOR_ID = "sensor_id"
 CONF_SIGMA_THRESHOLD = "sigma_threshold"
 CONF_SIGNAL_THRESHOLD = "signal_threshold"
+CONF_INT_POLARITY = "interrupt_polarity"
+
+INT_POLARITIES = {
+    "active_low": False,
+    "active_high": True,
+}
 
 Ranging = vl53l1x_ns.namespace("Ranging")
 RANGING_MODES = {
@@ -107,6 +113,7 @@ CONFIG_SCHEMA = (
                     cv.Optional(CONF_SIGNAL_THRESHOLD): cv.uint16_t,
                 }
             ),
+            cv.Optional(CONF_INT_POLARITY, default="active_low"): cv.enum(INT_POLARITIES, lower=True),
         }
     )
     .extend(i2c.i2c_device_schema(0x29))
@@ -164,3 +171,4 @@ async def setup_calibration(vl53l1x: cg.Pvariable, config: Dict):
         cg.add(vl53l1x.set_sigma_threshold(config[CONF_SIGMA_THRESHOLD]))
     if CONF_SIGNAL_THRESHOLD in config:
         cg.add(vl53l1x.set_signal_threshold_kcps(config[CONF_SIGNAL_THRESHOLD]))
+    cg.add(vl53l1x.set_interrupt_active_high(INT_POLARITIES[config[CONF_INT_POLARITY]]))
