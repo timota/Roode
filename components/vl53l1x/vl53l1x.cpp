@@ -44,6 +44,10 @@ void VL53L1X::dump_config() {
   }
   LOG_PIN("  Interrupt Pin: ", this->interrupt_pin.value());
   LOG_PIN("  XShut Pin: ", this->xshut_pin.value());
+  ESP_LOGCONFIG(TAG, "  INT active: %s", interrupt_active_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  INT miss count: %u", interrupt_miss_count_);
+  ESP_LOGCONFIG(TAG, "  Recovery count: %u", recovery_count_);
+  ESP_LOGCONFIG(TAG, "  Bus reset count: %u", bus_reset_count_);
 }
 
 void VL53L1X::setup() {
@@ -57,6 +61,7 @@ void VL53L1X::setup() {
     this->xshut_pin.value()->setup();
     this->xshut_pin.value()->digital_write(true);
     delay(2);
+    ESP_LOGD(TAG, "XSHUT initial state: %d", this->xshut_pin.value()->digital_read());
   }
 
   auto status = this->init();
