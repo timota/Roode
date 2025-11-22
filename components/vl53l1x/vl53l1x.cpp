@@ -64,6 +64,12 @@ void VL53L1X::setup() {
     ESP_LOGD(TAG, "XSHUT initial state: %d", this->xshut_pin.value()->digital_read());
   }
 
+  if (this->interrupt_pin.has_value()) {
+    this->interrupt_pin.value()->pin_mode(gpio::FLAG_INPUT | gpio::FLAG_PULLUP);
+    this->interrupt_pin.value()->setup();
+    ESP_LOGD(TAG, "INT initial state: %d", this->interrupt_pin.value()->digital_read());
+  }
+
   auto status = this->init();
   if (status != VL53L1_ERROR_NONE) {
     this->mark_failed();
