@@ -7,8 +7,9 @@ We will execute these steps in order. After completing each step, update this fi
    - Current pain points: auto-cal start timing/timeout instability, on_boot trigger removed; build now succeeds.  
    - Example config uses esp-idf I2C bus with INT/XSHUT pins; Arduino support already unused here.
 
-2. Freeze Arduino usage (stop adding new Arduino deps)  
-   - Audit VL53L1X/Roode for Arduino APIs. Avoid new Arduino calls while migrating.
+2. Freeze Arduino usage (stop adding new Arduino deps) **DONE**  
+   - Audit: `components/roode/roode.{h,cpp}` still include `Arduino.h`; no new Arduino deps elsewhere.  
+   - Rule: do not introduce new Arduino calls; removal of existing includes will be handled in later steps.
 
 3. Replace Arduino-specific APIs with ESPHome abstractions  
    - Use `esphome::i2c::I2CDevice`, `millis()/delay()`, scheduler, GPIOPin, etc. Remove direct ESP-IDF and Arduino calls in driver/component code.
