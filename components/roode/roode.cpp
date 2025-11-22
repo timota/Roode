@@ -1,5 +1,5 @@
 #include "roode.h"
-#include "Arduino.h"
+#include "esphome/core/hal.h"
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "esp_task_wdt.h"  // Access to the ESP32 task watchdog
 #endif
