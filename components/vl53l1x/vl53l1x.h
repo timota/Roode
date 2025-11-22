@@ -96,6 +96,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void coordinated_bus_reset();
   void apply_calibration_and_thresholds();
   void log_reason(const char *reason);
+  void schedule_timeout_recovery();
 
   void soft_reset();
   void record_failure();
@@ -104,6 +105,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   uint8_t interrupt_miss_count_{0};
   bool interrupt_retry_scheduled_{false};
   uint8_t consecutive_timeouts_{0};
+  bool timeout_recovery_scheduled_{false};
 };
 
 }  // namespace vl53l1x

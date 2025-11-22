@@ -200,6 +200,35 @@ void VL53L1X::log_reason(const char *reason) {
 #endif
 }
 
+void VL53L1X::schedule_timeout_recovery() {
+  if (timeout_recovery_scheduled_) return;
+  timeout_recovery_scheduled_ = true;
+
+  // small backoff sequence: 0s, 1s, 4s -> then bus reset
+  std::vector<uint32_t> backoff_ms = {0, 1000, 4000};
+  auto self = this;
+  std::function<void(size_t)> schedule_stage = [&](size_t idx) {
+    if (idx >= backoff_ms.size()) {
+      // Perform coordinated bus reset
+      ESP_LOGW(TAG, "Executing coordinated bus reset after repeated timeouts");
+      coordinated_bus_reset();
+      consecutive_timeouts_ = 0;
+      timeout_recovery_scheduled_ = false;
+      return;
+    }
+    this->set_timeout_fn(backoff_ms[idx], [self, idx, &schedule_stage]() {
+      ESP_LOGW(TAG, "Timeout recovery backoff stage %zu", idx);
+      self->restart();
+      if (self->consecutive_timeouts_ >= 3) {
+        schedule_stage(idx + 1);
+      } else {
+        self->timeout_recovery_scheduled_ = false;
+      }
+    });
+  };
+  schedule_stage(0);
+}
+
 optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   if (this->is_failed()) {
     status = ESP_FAIL;
@@ -263,6 +292,11 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
         ESP_LOGW(TAG, "INT missed 3 times; falling back to polling and scheduling retry");
         schedule_interrupt_retry();
       }
+    }
+    // Escalate to coordinated bus reset if repeated timeouts
+    if (consecutive_timeouts_ >= 3) {
+      ESP_LOGW(TAG, "Three consecutive timeouts; scheduling bus reset backoff");
+      schedule_timeout_recovery();
     }
     return {};
   }
