@@ -1,10 +1,8 @@
 #include "vl53l1x.h"
 #include "vl53l1x_idf.h"
 #include <cstdio>
+#include <memory>
 #include "esp_check.h"
-#ifdef USE_ESP_IDF
-#include "esphome/components/i2c/i2c_bus_esp_idf.h"
-#endif
 
 #if __has_include("../roode/roode.h")
 #define USE_ROODE_LOG 1
