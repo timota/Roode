@@ -71,6 +71,28 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   bool is_interrupt_enabled() const { return false; }
 
  protected:
+  enum class AutoCalPhase {
+    IDLE,
+    OFFSET_WARM_START,
+    OFFSET_WARM_WAIT,
+    OFFSET_SAMPLE_START,
+    OFFSET_WAIT,
+    XTALK_SAMPLE_START,
+    XTALK_WAIT,
+    DONE,
+  };
+
+  struct AutoCalState {
+    AutoCalPhase phase{AutoCalPhase::IDLE};
+    uint8_t offset_idx{0};
+    uint8_t offset_ok{0};
+    int32_t offset_acc{0};
+    uint8_t xtalk_idx{0};
+    uint8_t xtalk_ok{0};
+    uint32_t xtalk_acc{0};
+    uint32_t deadline_ms{0};
+  };
+
   std::unique_ptr<vl53l1x_idf::VL53L1XIDF> sensor_;
   optional<GPIOPin *> xshut_pin{};
   optional<InternalGPIOPin *> interrupt_pin{};
@@ -90,6 +112,9 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   bool calibration_services_enabled_{false};
   bool auto_calibration_enabled_{true};
   bool auto_cal_scheduled_{false};
+  bool auto_cal_running_{false};
+  bool auto_cal_done_{false};
+  AutoCalState auto_cal_state_{};
   static std::vector<VL53L1X *> sensors;
 
   VL53L1_Error init();
@@ -129,6 +154,8 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   void calibrate_xtalk_service();
   void schedule_default_calibration();
   void run_default_calibration();
+  void start_auto_cal_async();
+  void auto_cal_step();
 };
 
 }  // namespace vl53l1x

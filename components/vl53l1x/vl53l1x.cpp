@@ -459,31 +459,195 @@ void VL53L1X::update_interrupt_diagnostic() {
   interrupt_state_sensor_.value()->publish_state(level);
 }
 
+void VL53L1X::start_auto_cal_async() {
+  auto_cal_scheduled_ = false;
+  if (auto_cal_done_) {
+    ESP_LOGD(TAG, "Auto-calibration already completed; skipping");
+    return;
+  }
+  if (auto_cal_running_) {
+    ESP_LOGD(TAG, "Auto-calibration already running; skipping");
+    return;
+  }
+  if (this->is_failed()) {
+    ESP_LOGW(TAG, "Auto-calibration skipped: component is in failed state");
+    return;
+  }
+  auto_cal_running_ = true;
+  auto_cal_state_ = {};
+  auto_cal_state_.phase = AutoCalPhase::OFFSET_WARM_START;
+  ESP_LOGI(TAG, "Auto-calibration: starting (offset@200mm, xtalk@600mm)");
+  App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+}
+
+void VL53L1X::auto_cal_step() {
+  // If component is failed or sensor missing, abort.
+  if (this->is_failed() || sensor_ == nullptr) {
+    auto_cal_running_ = false;
+    return;
+  }
+
+  auto &st = auto_cal_state_;
+  switch (st.phase) {
+    case AutoCalPhase::OFFSET_WARM_START: {
+      sensor_->start_ranging();
+      st.deadline_ms = millis() + 400;
+      st.phase = AutoCalPhase::OFFSET_WARM_WAIT;
+      App.scheduler.set_timeout(this, "auto_cal_step", 5, [this]() { this->auto_cal_step(); });
+      break;
+    }
+    case AutoCalPhase::OFFSET_WARM_WAIT: {
+      bool ready = false;
+      sensor_->check_data_ready(ready);
+      if (ready || millis() > st.deadline_ms) {
+        sensor_->clear_interrupt();
+        sensor_->stop_ranging();
+        st.phase = AutoCalPhase::OFFSET_SAMPLE_START;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+      } else {
+        App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
+      }
+      break;
+    }
+    case AutoCalPhase::OFFSET_SAMPLE_START: {
+      const uint8_t offset_samples = 2;
+      if (st.offset_idx >= offset_samples) {
+        st.phase = AutoCalPhase::XTALK_SAMPLE_START;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      auto err = sensor_->start_ranging();
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Auto-cal offset sample %u start failed: %d", st.offset_idx, err);
+        st.offset_idx++;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      st.deadline_ms = millis() + 600;
+      st.phase = AutoCalPhase::OFFSET_WAIT;
+      App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
+      break;
+    }
+    case AutoCalPhase::OFFSET_WAIT: {
+      bool ready = false;
+      sensor_->check_data_ready(ready);
+      if (!ready && millis() <= st.deadline_ms) {
+        App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      if (!ready) {
+        ESP_LOGW(TAG, "Auto-cal offset sample %u timed out", st.offset_idx);
+        sensor_->stop_ranging();
+        st.offset_idx++;
+        st.phase = AutoCalPhase::OFFSET_SAMPLE_START;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      vl53l1x_idf::Measurement m;
+      auto err = sensor_->read_measurement(m);
+      sensor_->clear_interrupt();
+      sensor_->stop_ranging();
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Auto-cal offset sample %u read failed: %d", st.offset_idx, err);
+      } else {
+        int16_t written = static_cast<int16_t>(200) - static_cast<int16_t>(m.distance_mm);
+        st.offset_acc += written;
+        st.offset_ok++;
+        ESP_LOGD(TAG, "Auto-cal offset sample %u ok: raw=%umm written=%d", st.offset_idx, m.distance_mm, written);
+      }
+      st.offset_idx++;
+      st.phase = AutoCalPhase::OFFSET_SAMPLE_START;
+      App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+      break;
+    }
+    case AutoCalPhase::XTALK_SAMPLE_START: {
+      const uint8_t xtalk_samples = 3;
+      if (st.xtalk_idx >= xtalk_samples) {
+        st.phase = AutoCalPhase::DONE;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      auto err = sensor_->start_ranging();
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Auto-cal xtalk sample %u start failed: %d", st.xtalk_idx, err);
+        st.xtalk_idx++;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      st.deadline_ms = millis() + 800;
+      st.phase = AutoCalPhase::XTALK_WAIT;
+      App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
+      break;
+    }
+    case AutoCalPhase::XTALK_WAIT: {
+      bool ready = false;
+      sensor_->check_data_ready(ready);
+      if (!ready && millis() <= st.deadline_ms) {
+        App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      if (!ready) {
+        sensor_->stop_ranging();
+        ESP_LOGW(TAG, "Auto-cal xtalk sample %u timed out", st.xtalk_idx);
+        st.xtalk_idx++;
+        st.phase = AutoCalPhase::XTALK_SAMPLE_START;
+        App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+        break;
+      }
+      vl53l1x_idf::Measurement m;
+      auto err = sensor_->read_measurement(m);
+      sensor_->clear_interrupt();
+      sensor_->stop_ranging();
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Auto-cal xtalk sample %u read failed: %d", st.xtalk_idx, err);
+      } else {
+        uint32_t cps = m.signal_rate_mcps * 1000u;
+        st.xtalk_acc += cps;
+        st.xtalk_ok++;
+        ESP_LOGD(TAG, "Auto-cal xtalk sample %u ok: cps=%u", st.xtalk_idx, cps);
+      }
+      st.xtalk_idx++;
+      st.phase = AutoCalPhase::XTALK_SAMPLE_START;
+      App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
+      break;
+    }
+    case AutoCalPhase::DONE: {
+      // Apply results if any
+      if (st.offset_ok > 0) {
+        int16_t result = static_cast<int16_t>(st.offset_acc / st.offset_ok);
+        sensor_->set_offset_mm(result);
+        this->offset = result;
+        ESP_LOGI(TAG, "Auto-calibration offset complete: %dmm", result);
+      } else {
+        ESP_LOGW(TAG, "Auto-calibration offset produced no valid samples");
+      }
+      if (st.xtalk_ok > 0) {
+        uint16_t result = static_cast<uint16_t>(st.xtalk_acc / st.xtalk_ok);
+        sensor_->set_xtalk(result);
+        this->xtalk = result;
+        ESP_LOGI(TAG, "Auto-calibration xtalk complete: %ucps", result);
+      } else {
+        ESP_LOGW(TAG, "Auto-calibration xtalk produced no valid samples");
+      }
+      auto_cal_running_ = false;
+      auto_cal_done_ = true;
+      st.phase = AutoCalPhase::IDLE;
+      break;
+    }
+    case AutoCalPhase::IDLE:
+    default:
+      auto_cal_running_ = false;
+      break;
+  }
+}
 void VL53L1X::schedule_default_calibration() {
   if (auto_cal_scheduled_) return;
   auto_cal_scheduled_ = true;
   // Run shortly after init/restart to avoid blocking setup.
-  App.scheduler.set_timeout(this, "auto_cal", 50, [this]() { this->run_default_calibration(); });
+  App.scheduler.set_timeout(this, "auto_cal", 250, [this]() { this->start_auto_cal_async(); });
 }
 
-void VL53L1X::run_default_calibration() {
-  auto_cal_scheduled_ = false;
-  ESP_LOGI(TAG, "Auto-calibration: starting (offset@200mm, xtalk@600mm)");
-  int16_t offset_res = 0;
-  uint16_t xtalk_res = 0;
-  auto err_off = calibrate_offset_runtime(200, 2, offset_res);
-  auto err_xt = calibrate_xtalk_runtime(600, 3, xtalk_res);
-  if (err_off == ESP_OK) {
-    ESP_LOGI(TAG, "Auto-calibration offset complete: %dmm", offset_res);
-  } else {
-    ESP_LOGW(TAG, "Auto-calibration offset failed: %d", err_off);
-  }
-  if (err_xt == ESP_OK) {
-    ESP_LOGI(TAG, "Auto-calibration xtalk complete: %ucps", xtalk_res);
-  } else {
-    ESP_LOGW(TAG, "Auto-calibration xtalk failed: %d", err_xt);
-  }
-}
+void VL53L1X::run_default_calibration() {}  // unused now (kept for compatibility)
 
 // Simple helper to wait for data-ready with logging and a given timeout.
 static bool wait_ready(vl53l1x_idf::VL53L1XIDF *sensor, uint32_t timeout_ms) {
