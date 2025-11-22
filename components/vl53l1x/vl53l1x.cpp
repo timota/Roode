@@ -106,7 +106,10 @@ void VL53L1X::setup() {
   }
 
   if (auto_calibration_enabled_) {
+    ESP_LOGI(TAG, "Auto-calibration enabled; scheduling default routine");
     schedule_default_calibration();
+  } else {
+    ESP_LOGI(TAG, "Auto-calibration disabled for this sensor");
   }
 
   if (calibration_services_enabled_) {
