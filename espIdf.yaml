@@ -42,27 +42,31 @@ i2c:
     scan: True
 
 vl53l1x:
-  sensor_id: 1
-  timeout: 2000ms
-  pins:
-    xshut: GPIO16
-    interrupt:
-      number: GPIO18
-      mode: INPUT_PULLUP  # change to INPUT_PULLDOWN if your board uses pull-down
-  calibration:
-    ranging: long
-    # offset: 0mm
-    # crosstalk: 0cps
-    # sigma_threshold: 90mm
-    # signal_threshold: 1024  # kcps
-  auto_calibration: true
-  diagnostics:
-    # optional binary_sensor that reflects current INT pin level (true = high)
-    interrupt_state:
-      name: "${friendly_name} INT level"
+  - id: tof_sensor_1
+    timeout: 2000ms
+    pins:
+      xshut: GPIO16
+      interrupt:
+        number: GPIO18
+        mode: INPUT_PULLDOWN
+    calibration:
+      ranging: long
+    auto_calibration: true
+    diagnostics:
+      interrupt_state:
+        name: "${friendly_name} INT level"
 
 # Optional distance sensor (publishes readings). Roode can operate without it.
 #sensor:
 #  - platform: vl53l1x
 #    name: "${friendly_name} distance"
 #    id: tof_distance
+
+button:
+  - platform: template
+    name: "${friendly_name} Recalibrate ToF"
+    entity_category: config
+    on_press:
+      - lambda: |-
+          id(tof_sensor_1).calibrate_offset();
+          id(tof_sensor_1).calibrate_xtalk();
