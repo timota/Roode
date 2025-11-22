@@ -29,7 +29,10 @@ ota:
   password: !secret ota_password
 
 logger:
-  level: INFO
+  level: DEBUG
+
+web_server:
+  port: 80
 
 i2c:
   - id: bus_a
@@ -41,12 +44,17 @@ vl53l1x:
   sensor_id: 1
   timeout: 2000ms
   pins:
-    xshut: GPIO3
-    interrupt: GPIO1
+    xshut: GPIO16
+    interrupt: GPIO18
   calibration:
     ranging: long
+    # offset: 0mm
+    # crosstalk: 0cps
+    # sigma_threshold: 90mm
+    # signal_threshold: 1024  # kcps
 
-sensor:
-  - platform: vl53l1x
-    name: "${friendly_name} distance"
-    id: tof_distance
+# Optional distance sensor (publishes readings). Roode can operate without it.
+#sensor:
+#  - platform: vl53l1x
+#    name: "${friendly_name} distance"
+#    id: tof_distance
