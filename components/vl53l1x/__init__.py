@@ -149,18 +149,11 @@ async def to_code(config: Dict):
 
         cg.add(vl53l1x.set_timeout(conf[CONF_TIMEOUT]))
         await setup_hardware(vl53l1x, conf)
-    await setup_calibration(vl53l1x, conf[CONF_CALIBRATION])
-    await setup_diagnostics(vl53l1x, conf[CONF_DIAGNOSTICS])
-    cg.add(vl53l1x.enable_calibration_services(conf[CONF_ENABLE_CAL_SERVICES]))
-    cg.add(vl53l1x.enable_auto_calibration(conf[CONF_AUTO_CAL]))
-    # Register late on_boot auto-cal trigger (priority -200)
-    on_boot_trigger = cg.App.on_boot()
-    on_boot_trigger.set_priority(-200.0)
-    actions = [
-        automation.DelayAction(2500),
-        automation.LambdaAction(cg.RawExpression(f"id({conf[CONF_ID].id}).start_auto_cal_async();")),
-    ]
-    await automation.build_automation(on_boot_trigger, [], actions)
+        await setup_calibration(vl53l1x, conf[CONF_CALIBRATION])
+        await setup_diagnostics(vl53l1x, conf[CONF_DIAGNOSTICS])
+        cg.add(vl53l1x.enable_calibration_services(conf[CONF_ENABLE_CAL_SERVICES]))
+        cg.add(vl53l1x.enable_auto_calibration(conf[CONF_AUTO_CAL]))
+    # Auto-calibration is scheduled internally by the component after setup.
 
 
 async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
