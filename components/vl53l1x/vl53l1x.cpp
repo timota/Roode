@@ -685,7 +685,7 @@ void VL53L1X::auto_cal_step() {
 void VL53L1X::schedule_default_calibration() {
   if (auto_cal_scheduled_) return;
   auto_cal_scheduled_ = true;
-  // Kept for manual calls; main trigger now via on_boot.
+  ESP_LOGD(TAG, "Auto-cal will start in %ums", auto_cal_delay_ms_);
   App.scheduler.set_timeout(this, "auto_cal", auto_cal_delay_ms_, [this]() { this->start_auto_cal_async(); });
 }
 
