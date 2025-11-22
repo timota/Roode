@@ -52,6 +52,7 @@ vl53l1x:
     # crosstalk: 0cps
     # sigma_threshold: 90mm
     # signal_threshold: 1024  # kcps
+  interrupt_polarity: active_low  # or active_high
 
 # Optional distance sensor (publishes readings). Roode can operate without it.
 #sensor:
