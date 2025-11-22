@@ -36,6 +36,7 @@ CONF_SIGMA_THRESHOLD = "sigma_threshold"
 CONF_SIGNAL_THRESHOLD = "signal_threshold"
 CONF_DIAGNOSTICS = "diagnostics"
 CONF_INT_STATE = "interrupt_state"
+CONF_ENABLE_CAL_SERVICES = "enable_calibration_services"
 Ranging = vl53l1x_ns.namespace("Ranging")
 RANGING_MODES = {
     CONF_AUTO: CONF_AUTO,
@@ -108,6 +109,7 @@ CONFIG_SCHEMA = (
                     cv.Optional(CONF_SIGNAL_THRESHOLD): cv.uint16_t,
                 }
             ),
+            cv.Optional(CONF_ENABLE_CAL_SERVICES, default=False): cv.boolean,
             cv.Optional(CONF_DIAGNOSTICS, default={}): NullableSchema(
                 {
                     cv.Optional(CONF_INT_STATE): binary_sensor.binary_sensor_schema(),
@@ -148,6 +150,7 @@ async def to_code(config: Dict):
     await setup_hardware(vl53l1x, config)
     await setup_calibration(vl53l1x, config[CONF_CALIBRATION])
     await setup_diagnostics(vl53l1x, config[CONF_DIAGNOSTICS])
+    cg.add(vl53l1x.enable_calibration_services(config[CONF_ENABLE_CAL_SERVICES]))
 
 
 async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):

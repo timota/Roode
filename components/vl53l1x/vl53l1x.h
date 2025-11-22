@@ -4,6 +4,7 @@
 #include <vector>
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/api/custom_api_device.h"
 #include "esphome/core/application.h"
 #include "esphome/core/component.h"
 #include "esphome/core/gpio.h"
@@ -26,7 +27,7 @@ static const char *const TAG = "VL53L1X";
  * A wrapper for the VL53L1X, Time-of-Flight (ToF), laser-ranging sensor.
  * This stores user calibration info.
  */
-class VL53L1X : public i2c::I2CDevice, public Component {
+class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDevice {
  public:
   VL53L1X();
   void setup() override;
@@ -63,6 +64,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void set_sigma_threshold(uint16_t mm) { this->sigma_threshold_mm = mm; }
   void set_signal_threshold_kcps(uint16_t kcps) { this->signal_threshold_kcps = kcps; }
   void set_interrupt_state_sensor(binary_sensor::BinarySensor *sensor) { this->interrupt_state_sensor_ = sensor; }
+  void enable_calibration_services(bool enabled) { this->calibration_services_enabled_ = enabled; }
   bool is_interrupt_enabled() const { return false; }
 
  protected:
@@ -82,6 +84,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   uint8_t bus_reset_count_{0};
   uint8_t sensor_id_{0};
   uint8_t desired_address_{0x29};
+  bool calibration_services_enabled_{false};
   static std::vector<VL53L1X *> sensors;
 
   VL53L1_Error init();
@@ -113,6 +116,12 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   bool timeout_recovery_scheduled_{false};
   uint8_t consecutive_i2c_errors_{0};
   bool bus_reset_cooldown_{false};
+
+  // Calibration helpers
+  VL53L1_Error calibrate_offset_runtime(uint16_t target_distance_mm, uint8_t samples, int16_t &result_mm);
+  VL53L1_Error calibrate_xtalk_runtime(uint16_t target_distance_mm, uint8_t samples, uint16_t &result_cps);
+  void calibrate_offset_service();
+  void calibrate_xtalk_service();
 };
 
 }  // namespace vl53l1x

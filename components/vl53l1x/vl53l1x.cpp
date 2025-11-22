@@ -105,6 +105,11 @@ void VL53L1X::setup() {
     }
   }
 
+  if (calibration_services_enabled_) {
+    this->register_service(&VL53L1X::calibrate_offset_service, "vl53l1x_calibrate_offset");
+    this->register_service(&VL53L1X::calibrate_xtalk_service, "vl53l1x_calibrate_xtalk");
+  }
+
   ESP_LOGI(TAG, "Setup complete");
 }
 
@@ -440,6 +445,102 @@ void VL53L1X::update_interrupt_diagnostic() {
   if (!interrupt_state_sensor_.has_value() || !this->interrupt_pin.has_value()) return;
   bool level = this->interrupt_pin.value()->digital_read();
   interrupt_state_sensor_.value()->publish_state(level);
+}
+
+VL53L1_Error VL53L1X::calibrate_offset_runtime(uint16_t target_distance_mm, uint8_t samples, int16_t &result_mm) {
+  if (samples == 0) return ESP_ERR_INVALID_ARG;
+  int32_t acc = 0;
+  uint8_t ok = 0;
+  for (uint8_t i = 0; i < samples; i++) {
+    uint16_t written = 0;
+    auto err = sensor_->calibrate_offset_once(target_distance_mm, written);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Offset calibration sample %u failed: %d", i, err);
+      continue;
+    }
+    acc += static_cast<int16_t>(written);
+    ok++;
+    delay(5);
+    App.feed_wdt();
+  }
+  if (ok == 0) return ESP_FAIL;
+  result_mm = static_cast<int16_t>(acc / ok);
+  this->offset = result_mm;
+  ESP_LOGI(TAG, "Offset calibrated: %dmm (samples ok=%u)", result_mm, ok);
+  return sensor_->set_offset_mm(result_mm);
+}
+
+VL53L1_Error VL53L1X::calibrate_xtalk_runtime(uint16_t target_distance_mm, uint8_t samples, uint16_t &result_cps) {
+  if (samples == 0) return ESP_ERR_INVALID_ARG;
+  uint32_t acc = 0;
+  uint8_t ok = 0;
+  // Use a slightly longer timing budget for better stability during calibration
+  const RangingMode *saved_mode = this->ranging_mode;
+  if (saved_mode != nullptr) {
+    sensor_->set_timing_budget_us(std::max<uint32_t>(20000, saved_mode->timing_budget * 1000));
+  }
+  for (uint8_t i = 0; i < samples; i++) {
+    auto err = sensor_->start_ranging();
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Xtalk start failed: %d", err);
+      continue;
+    }
+    bool ready = false;
+    uint32_t start = millis();
+    while (!ready && (millis() - start) < 250) {
+      sensor_->check_data_ready(ready);
+      if (!ready) {
+        delay(5);
+        App.feed_wdt();
+      }
+    }
+    if (!ready) {
+      sensor_->stop_ranging();
+      ESP_LOGW(TAG, "Xtalk sample %u timed out", i);
+      continue;
+    }
+    vl53l1x_idf::Measurement m;
+    err = sensor_->read_measurement(m);
+    sensor_->clear_interrupt();
+    sensor_->stop_ranging();
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Xtalk sample %u read failed: %d", i, err);
+      continue;
+    }
+    // Expect low signal in dark/coverglass; use signal rate to compute cps
+    uint32_t cps = m.signal_rate_mcps * 1000u;  // mcps -> cps
+    acc += cps;
+    ok++;
+    delay(5);
+    App.feed_wdt();
+  }
+  if (ok == 0) return ESP_FAIL;
+  result_cps = static_cast<uint16_t>(acc / ok);
+  this->xtalk = result_cps;
+  ESP_LOGI(TAG, "Xtalk calibrated: %ucps (samples ok=%u)", result_cps, ok);
+  return sensor_->set_xtalk(result_cps);
+}
+
+void VL53L1X::calibrate_offset_service() {
+  int distance_mm = 200;  // default target
+  int16_t result = 0;
+  auto err = calibrate_offset_runtime(distance_mm, 3, result);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Offset calibration service complete: %dmm", result);
+  } else {
+    ESP_LOGW(TAG, "Offset calibration service failed: %d", err);
+  }
+}
+
+void VL53L1X::calibrate_xtalk_service() {
+  int distance_mm = 600;  // default distance for xtalk target
+  uint16_t result = 0;
+  auto err = calibrate_xtalk_runtime(distance_mm, 5, result);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Xtalk calibration service complete: %ucps", result);
+  } else {
+    ESP_LOGW(TAG, "Xtalk calibration service failed: %d", err);
+  }
 }
 
 }  // namespace vl53l1x
