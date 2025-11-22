@@ -575,5 +575,25 @@ void VL53L1X::calibrate_xtalk_service() {
   }
 }
 
+void VL53L1X::calibrate_offset() {
+  int16_t result = 0;
+  auto err = calibrate_offset_runtime(200, 3, result);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Manual offset calibration complete: %dmm", result);
+  } else {
+    ESP_LOGW(TAG, "Manual offset calibration failed: %d", err);
+  }
+}
+
+void VL53L1X::calibrate_xtalk() {
+  uint16_t result = 0;
+  auto err = calibrate_xtalk_runtime(600, 5, result);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Manual xtalk calibration complete: %ucps", result);
+  } else {
+    ESP_LOGW(TAG, "Manual xtalk calibration failed: %d", err);
+  }
+}
+
 }  // namespace vl53l1x
 }  // namespace esphome

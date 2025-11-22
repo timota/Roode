@@ -66,6 +66,8 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   void set_interrupt_state_sensor(binary_sensor::BinarySensor *sensor) { this->interrupt_state_sensor_ = sensor; }
   void enable_calibration_services(bool enabled) { this->calibration_services_enabled_ = enabled; }
   void enable_auto_calibration(bool enabled) { this->auto_calibration_enabled_ = enabled; }
+  void calibrate_offset();
+  void calibrate_xtalk();
   bool is_interrupt_enabled() const { return false; }
 
  protected:
