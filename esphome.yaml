@@ -1,6 +1,12 @@
 esphome:
   name: roode32idf
   friendly_name: roode32idf
+  platformio_options:
+    lib_deps:
+      - rneurink/VL53L1X_ULD@1.2.3
+    build_flags:
+      - -Icomponents/vl53l1x
+      - -Icomponents/vl53l1x/platform
 
 esp32:
   board: esp32dev
@@ -19,7 +25,8 @@ api:
   password: !secret api_key
 
 ota:
-  password: !secret ota_password
+  - platform: esphome
+    password: !secret ota_password
 
 external_components:
   - source: components
@@ -41,5 +48,3 @@ vl53l1x:
         mode: INPUT_PULLUP
     calibration:
       ranging: long
-    auto_calibration: true
-

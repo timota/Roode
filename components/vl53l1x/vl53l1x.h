@@ -93,4 +93,3 @@ class VL53L1X : public i2c::I2CDevice, public Component {
 
 }  // namespace vl53l1x
 }  // namespace esphome
-

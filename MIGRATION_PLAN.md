@@ -30,6 +30,7 @@ We will execute these steps in order. After completing each step, update this fi
      4.9 Error tracking: record_failure/consecutive_failures; mark_failed on hard errors.  
      4.10 Logging parity: keep informative logs (setup, pins, timeouts, recoveries) without Roode-only calls.  
      4.11 Auto-calibration (new flow under IDF): single late on_boot trigger, ULD-like timing windows, one controlled retry.
+   - Paused status: ULD sources are flattened into components/vl53l1x/, includes partially adjusted; build currently failing (missing platform includes resolved, remaining issues are ESPHome HAL replacements in ULD code and removal of Roode log calls in vl53l1x.cpp). Resume from here.
 
 5. Clean build & runtime under `framework: esp-idf`  
    - Ensure `esphome compile espIdf.yaml` succeeds; resolve I2C conflicts; verify logs show stable start-up without calibration spam.
