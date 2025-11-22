@@ -31,7 +31,6 @@ CONF_CALIBRATION = "calibration"
 CONF_RANGING_MODE = "ranging"
 CONF_XSHUT = "xshut"
 CONF_XTALK = "crosstalk"
-CONF_SENSOR_ID = "sensor_id"
 CONF_SIGMA_THRESHOLD = "sigma_threshold"
 CONF_SIGNAL_THRESHOLD = "signal_threshold"
 CONF_DIAGNOSTICS = "diagnostics"
@@ -80,80 +79,78 @@ def NullableSchema(*args, default: Any = None, **kwargs):
     return cv.Any(cv.Schema(*args, **kwargs), none_to_empty)
 
 
-CONFIG_SCHEMA = (
-    cv.Schema(
-        {
-            cv.GenerateID(): cv.declare_id(VL53L1X),
-            cv.Optional(CONF_SENSOR_ID, default=1): cv.int_range(min=1, max=16),
-            cv.Optional(
-                CONF_TIMEOUT, default="2s"
-            ): cv.positive_time_period_milliseconds,
-            cv.Optional(CONF_PINS, default={}): NullableSchema(
-                {
-                    cv.Optional(CONF_XSHUT): pins.gpio_output_pin_schema,
-                    cv.Optional(CONF_INTERRUPT): pins.internal_gpio_input_pin_schema,
-                }
-            ),
-            cv.Optional(CONF_CALIBRATION, default={}): NullableSchema(
-                {
-                    cv.Optional(CONF_RANGING_MODE, default=CONF_AUTO): cv.enum(
-                        RANGING_MODES
+BASE_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.declare_id(VL53L1X),
+        cv.Optional(
+            CONF_TIMEOUT, default="2s"
+        ): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_PINS, default={}): NullableSchema(
+            {
+                cv.Optional(CONF_XSHUT): pins.gpio_output_pin_schema,
+                cv.Optional(CONF_INTERRUPT): pins.internal_gpio_input_pin_schema,
+            }
+        ),
+        cv.Optional(CONF_CALIBRATION, default={}): NullableSchema(
+            {
+                cv.Optional(CONF_RANGING_MODE, default=CONF_AUTO): cv.enum(
+                    RANGING_MODES
+                ),
+                cv.Optional(CONF_XTALK): cv.All(
+                    int_with_unit(
+                        "corrected photon count as cps (counts per second)", "(cps)"
                     ),
-                    cv.Optional(CONF_XTALK): cv.All(
-                        int_with_unit(
-                            "corrected photon count as cps (counts per second)", "(cps)"
-                        ),
-                        cv.uint16_t,
-                    ),
-                    cv.Optional(CONF_OFFSET): cv.All(distance_as_mm, int16_t),
-                    cv.Optional(CONF_SIGMA_THRESHOLD): cv.All(distance_as_mm, cv.uint16_t),
-                    cv.Optional(CONF_SIGNAL_THRESHOLD): cv.uint16_t,
-                }
-            ),
-            cv.Optional(CONF_ENABLE_CAL_SERVICES, default=False): cv.boolean,
-            cv.Optional(CONF_AUTO_CAL, default=True): cv.boolean,
-            cv.Optional(CONF_DIAGNOSTICS, default={}): NullableSchema(
-                {
-                    cv.Optional(CONF_INT_STATE): binary_sensor.binary_sensor_schema(),
-                }
-            ),
-        }
-    )
-    .extend(i2c.i2c_device_schema(0x29))
-    .extend(cv.COMPONENT_SCHEMA)
-)
+                    cv.uint16_t,
+                ),
+                cv.Optional(CONF_OFFSET): cv.All(distance_as_mm, int16_t),
+                cv.Optional(CONF_SIGMA_THRESHOLD): cv.All(distance_as_mm, cv.uint16_t),
+                cv.Optional(CONF_SIGNAL_THRESHOLD): cv.uint16_t,
+            }
+        ),
+        cv.Optional(CONF_ENABLE_CAL_SERVICES, default=False): cv.boolean,
+        cv.Optional(CONF_AUTO_CAL, default=True): cv.boolean,
+        cv.Optional(CONF_DIAGNOSTICS, default={}): NullableSchema(
+            {
+                cv.Optional(CONF_INT_STATE): binary_sensor.binary_sensor_schema(),
+            }
+        ),
+    }
+).extend(i2c.i2c_device_schema(0x29)).extend(cv.COMPONENT_SCHEMA)
+
+CONFIG_SCHEMA = cv.All(cv.ensure_list(BASE_SCHEMA))
 
 
 async def to_code(config: Dict):
     cg.add_library("rneurink", "1.2.3", "VL53L1X_ULD")
 
-    vl53l1x = cg.new_Pvariable(config[CONF_ID])
-    await cg.register_component(vl53l1x, config)
-    await i2c.register_i2c_device(vl53l1x, config)
-    cg.add(vl53l1x.set_sensor_id(config[CONF_SENSOR_ID]))
-    cg.add(vl53l1x.set_desired_address(config[CONF_ADDRESS]))
+    for idx, conf in enumerate(config):
+        vl53l1x = cg.new_Pvariable(conf[CONF_ID])
+        await cg.register_component(vl53l1x, conf)
+        await i2c.register_i2c_device(vl53l1x, conf)
+        cg.add(vl53l1x.set_sensor_id(idx + 1))
+        cg.add(vl53l1x.set_desired_address(conf[CONF_ADDRESS]))
 
-    # If i2c frequency has not been explicitly set, then increase it to our recommended
-    i2c_id = config[CONF_I2C_ID]
-    i2c_config = next(
-        entry for entry in CORE.config[CONF_I2C] if entry[CONF_ID] == i2c_id
-    )
-    frequency = i2c_config[CONF_FREQUENCY]
-    if frequency == 50000:  # default
-        i2c_var = await cg.get_variable(i2c_id)
-        cg.add(i2c_var.set_frequency(400000))
-    elif frequency < 400000:
-        _LOGGER.warning(
-            "Recommended I2C frequency for VL53L1X is 400kHz. Currently: %dkHz",
-            frequency / 1000,
+        # If i2c frequency has not been explicitly set, then increase it to our recommended
+        i2c_id = conf[CONF_I2C_ID]
+        i2c_config = next(
+            entry for entry in CORE.config[CONF_I2C] if entry[CONF_ID] == i2c_id
         )
+        frequency = i2c_config[CONF_FREQUENCY]
+        if frequency == 50000:  # default
+            i2c_var = await cg.get_variable(i2c_id)
+            cg.add(i2c_var.set_frequency(400000))
+        elif frequency < 400000:
+            _LOGGER.warning(
+                "Recommended I2C frequency for VL53L1X is 400kHz. Currently: %dkHz",
+                frequency / 1000,
+            )
 
-    cg.add(vl53l1x.set_timeout(config[CONF_TIMEOUT]))
-    await setup_hardware(vl53l1x, config)
-    await setup_calibration(vl53l1x, config[CONF_CALIBRATION])
-    await setup_diagnostics(vl53l1x, config[CONF_DIAGNOSTICS])
-    cg.add(vl53l1x.enable_calibration_services(config[CONF_ENABLE_CAL_SERVICES]))
-    cg.add(vl53l1x.enable_auto_calibration(config[CONF_AUTO_CAL]))
+        cg.add(vl53l1x.set_timeout(conf[CONF_TIMEOUT]))
+        await setup_hardware(vl53l1x, conf)
+        await setup_calibration(vl53l1x, conf[CONF_CALIBRATION])
+        await setup_diagnostics(vl53l1x, conf[CONF_DIAGNOSTICS])
+        cg.add(vl53l1x.enable_calibration_services(conf[CONF_ENABLE_CAL_SERVICES]))
+        cg.add(vl53l1x.enable_auto_calibration(conf[CONF_AUTO_CAL]))
 
 
 async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
