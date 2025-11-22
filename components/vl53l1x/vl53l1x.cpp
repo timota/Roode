@@ -482,10 +482,30 @@ void VL53L1X::run_default_calibration() {
   }
 }
 
+// Simple helper to wait for data-ready with logging and a given timeout.
+static bool wait_ready(vl53l1x_idf::VL53L1XIDF *sensor, uint32_t timeout_ms) {
+  bool ready = false;
+  uint32_t start = millis();
+  while (!ready && (millis() - start) < timeout_ms) {
+    sensor->check_data_ready(ready);
+    if (!ready) {
+      delay(5);
+      App.feed_wdt();
+    }
+  }
+  return ready;
+}
+
 VL53L1_Error VL53L1X::calibrate_offset_runtime(uint16_t target_distance_mm, uint8_t samples, int16_t &result_mm) {
   if (samples == 0) return ESP_ERR_INVALID_ARG;
   int32_t acc = 0;
   uint8_t ok = 0;
+  // Warm-up measurement to wake the device and settle timing
+  sensor_->start_ranging();
+  wait_ready(sensor_.get(), 400);
+  sensor_->clear_interrupt();
+  sensor_->stop_ranging();
+
   for (uint8_t i = 0; i < samples; i++) {
     uint16_t written = 0;
     auto err = sensor_->calibrate_offset_once(target_distance_mm, written);
@@ -520,15 +540,7 @@ VL53L1_Error VL53L1X::calibrate_xtalk_runtime(uint16_t target_distance_mm, uint8
       ESP_LOGW(TAG, "Xtalk start failed: %d", err);
       continue;
     }
-    bool ready = false;
-    uint32_t start = millis();
-    while (!ready && (millis() - start) < 500) {
-      sensor_->check_data_ready(ready);
-      if (!ready) {
-        delay(5);
-        App.feed_wdt();
-      }
-    }
+    bool ready = wait_ready(sensor_.get(), 600);
     if (!ready) {
       sensor_->stop_ranging();
       ESP_LOGW(TAG, "Xtalk sample %u timed out", i);
