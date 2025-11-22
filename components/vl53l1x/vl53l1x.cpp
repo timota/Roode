@@ -523,7 +523,7 @@ void VL53L1X::auto_cal_step() {
         App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
         break;
       }
-      st.deadline_ms = millis() + 600;
+      st.deadline_ms = millis() + 800;
       st.phase = AutoCalPhase::OFFSET_WAIT;
       App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
       break;
@@ -574,7 +574,7 @@ void VL53L1X::auto_cal_step() {
         App.scheduler.set_timeout(this, "auto_cal_step", 0, [this]() { this->auto_cal_step(); });
         break;
       }
-      st.deadline_ms = millis() + 800;
+      st.deadline_ms = millis() + 1000;
       st.phase = AutoCalPhase::XTALK_WAIT;
       App.scheduler.set_timeout(this, "auto_cal_step", 10, [this]() { this->auto_cal_step(); });
       break;
@@ -630,7 +630,19 @@ void VL53L1X::auto_cal_step() {
         ESP_LOGW(TAG, "Auto-calibration xtalk produced no valid samples");
       }
       auto_cal_running_ = false;
-      auto_cal_done_ = true;
+      bool success = (st.offset_ok > 0 && st.xtalk_ok > 0);
+      auto_cal_done_ = success;
+      if (!success && auto_cal_retries_ < 2) {
+        auto_cal_retry_pending_ = true;
+        auto_cal_retries_++;
+        ESP_LOGW(TAG, "Auto-cal failed; scheduling retry #%u in 5s", auto_cal_retries_);
+        App.scheduler.set_timeout(this, "auto_cal_retry", 5000, [this]() {
+          auto_cal_retry_pending_ = false;
+          this->start_auto_cal_async();
+        });
+      } else if (!success) {
+        ESP_LOGW(TAG, "Auto-cal failed after retries; giving up for this boot");
+      }
       st.phase = AutoCalPhase::IDLE;
       break;
     }
