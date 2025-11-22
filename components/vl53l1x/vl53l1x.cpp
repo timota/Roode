@@ -469,6 +469,23 @@ void VL53L1X::start_auto_cal_async() {
     ESP_LOGD(TAG, "Auto-calibration already running; skipping");
     return;
   }
+  // Ensure a quick warm measurement before starting; if not ready, defer.
+  bool warm_ready = false;
+  if (sensor_ != nullptr) {
+    sensor_->start_ranging();
+    warm_ready = wait_ready(sensor_.get(), 300);
+    sensor_->clear_interrupt();
+    sensor_->stop_ranging();
+  }
+  if (!warm_ready) {
+    ESP_LOGW(TAG, "Auto-cal warm-up measurement not ready; deferring auto-cal by 1s");
+    auto_cal_scheduled_ = true;
+    App.scheduler.set_timeout(this, "auto_cal_warm_retry", 1000, [this]() {
+      auto_cal_scheduled_ = false;
+      this->start_auto_cal_async();
+    });
+    return;
+  }
   if (this->is_failed()) {
     ESP_LOGW(TAG, "Auto-calibration skipped: component is in failed state");
     return;
@@ -656,7 +673,7 @@ void VL53L1X::schedule_default_calibration() {
   if (auto_cal_scheduled_) return;
   auto_cal_scheduled_ = true;
   // Run shortly after init/restart to avoid blocking setup.
-  App.scheduler.set_timeout(this, "auto_cal", 250, [this]() { this->start_auto_cal_async(); });
+  App.scheduler.set_timeout(this, "auto_cal", auto_cal_delay_ms_, [this]() { this->start_auto_cal_async(); });
 }
 
 void VL53L1X::run_default_calibration() {}  // unused now (kept for compatibility)
