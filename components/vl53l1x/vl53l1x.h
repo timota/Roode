@@ -65,6 +65,7 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   void set_signal_threshold_kcps(uint16_t kcps) { this->signal_threshold_kcps = kcps; }
   void set_interrupt_state_sensor(binary_sensor::BinarySensor *sensor) { this->interrupt_state_sensor_ = sensor; }
   void enable_calibration_services(bool enabled) { this->calibration_services_enabled_ = enabled; }
+  void enable_auto_calibration(bool enabled) { this->auto_calibration_enabled_ = enabled; }
   bool is_interrupt_enabled() const { return false; }
 
  protected:
@@ -85,6 +86,7 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   uint8_t sensor_id_{0};
   uint8_t desired_address_{0x29};
   bool calibration_services_enabled_{false};
+  bool auto_calibration_enabled_{true};
   static std::vector<VL53L1X *> sensors;
 
   VL53L1_Error init();
@@ -122,6 +124,8 @@ class VL53L1X : public i2c::I2CDevice, public Component, public api::CustomAPIDe
   VL53L1_Error calibrate_xtalk_runtime(uint16_t target_distance_mm, uint8_t samples, uint16_t &result_cps);
   void calibrate_offset_service();
   void calibrate_xtalk_service();
+  void schedule_default_calibration();
+  void run_default_calibration();
 };
 
 }  // namespace vl53l1x

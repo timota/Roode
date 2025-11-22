@@ -105,6 +105,10 @@ void VL53L1X::setup() {
     }
   }
 
+  if (auto_calibration_enabled_) {
+    schedule_default_calibration();
+  }
+
   if (calibration_services_enabled_) {
     this->register_service(&VL53L1X::calibrate_offset_service, "vl53l1x_calibrate_offset");
     this->register_service(&VL53L1X::calibrate_xtalk_service, "vl53l1x_calibrate_xtalk");
@@ -215,6 +219,9 @@ void VL53L1X::coordinated_bus_reset() {
   delay(2);
   for (auto *s : sensors) {
     s->init();
+    if (s->auto_calibration_enabled_) {
+      s->schedule_default_calibration();
+    }
   }
 }
 
@@ -428,8 +435,10 @@ void VL53L1X::restart() {
     this->xshut_pin.value()->digital_write(true);
     delay(2);
     this->init();
+    if (auto_calibration_enabled_) schedule_default_calibration();
   } else if (sensor_) {
     sensor_->soft_reset();
+    if (auto_calibration_enabled_) schedule_default_calibration();
   }
 }
 
@@ -445,6 +454,29 @@ void VL53L1X::update_interrupt_diagnostic() {
   if (!interrupt_state_sensor_.has_value() || !this->interrupt_pin.has_value()) return;
   bool level = this->interrupt_pin.value()->digital_read();
   interrupt_state_sensor_.value()->publish_state(level);
+}
+
+void VL53L1X::schedule_default_calibration() {
+  // Run shortly after init/restart to avoid blocking setup.
+  App.scheduler.set_timeout(this, "auto_cal", 50, [this]() { this->run_default_calibration(); });
+}
+
+void VL53L1X::run_default_calibration() {
+  ESP_LOGI(TAG, "Auto-calibration: starting (offset@200mm, xtalk@600mm)");
+  int16_t offset_res = 0;
+  uint16_t xtalk_res = 0;
+  auto err_off = calibrate_offset_runtime(200, 2, offset_res);
+  auto err_xt = calibrate_xtalk_runtime(600, 3, xtalk_res);
+  if (err_off == ESP_OK) {
+    ESP_LOGI(TAG, "Auto-calibration offset complete: %dmm", offset_res);
+  } else {
+    ESP_LOGW(TAG, "Auto-calibration offset failed: %d", err_off);
+  }
+  if (err_xt == ESP_OK) {
+    ESP_LOGI(TAG, "Auto-calibration xtalk complete: %ucps", xtalk_res);
+  } else {
+    ESP_LOGW(TAG, "Auto-calibration xtalk failed: %d", err_xt);
+  }
 }
 
 VL53L1_Error VL53L1X::calibrate_offset_runtime(uint16_t target_distance_mm, uint8_t samples, int16_t &result_mm) {
