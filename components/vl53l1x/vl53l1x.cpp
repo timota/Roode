@@ -147,6 +147,14 @@ VL53L1_Error VL53L1X::init() {
     return status;
   }
 
+  // Verify final I2C address after init
+  uint8_t final_addr = sensor.GetI2CAddress() >> 1;
+  if (final_addr != address_) {
+    ESP_LOGW(TAG, "Sensor address mismatch after init: expected 0x%02X got 0x%02X", address_, final_addr);
+  } else {
+    ESP_LOGD(TAG, "Sensor address confirmed: 0x%02X", final_addr);
+  }
+
   return status;
 }
 
