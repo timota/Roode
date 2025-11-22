@@ -519,7 +519,7 @@ VL53L1_Error VL53L1X::calibrate_xtalk_runtime(uint16_t target_distance_mm, uint8
     }
     bool ready = false;
     uint32_t start = millis();
-    while (!ready && (millis() - start) < 250) {
+    while (!ready && (millis() - start) < 500) {
       sensor_->check_data_ready(ready);
       if (!ready) {
         delay(5);

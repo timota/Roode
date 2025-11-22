@@ -165,7 +165,8 @@ esp_err_t VL53L1XIDF::calibrate_offset_once(uint16_t target_distance_mm, uint16_
   ESP_RETURN_ON_ERROR(start_ranging(), TAG, "cal start");
   bool ready = false;
   uint32_t start = millis();
-  while (!ready && (millis() - start) < 200) {
+  // Allow a longer window during calibration to account for slower first measurements
+  while (!ready && (millis() - start) < 400) {
     check_data_ready(ready);
     if (!ready) delay(5);
   }
