@@ -76,6 +76,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   optional<uint16_t> signal_threshold_kcps{};
   uint16_t timeout{};
   int recovery_count_{0};
+  uint8_t bus_reset_count_{0};
   uint8_t sensor_id_{0};
   uint8_t desired_address_{0x29};
   static std::vector<VL53L1X *> sensors;
@@ -91,6 +92,10 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   bool check_features();
   bool validate_interrupt();
   void schedule_interrupt_retry();
+  void coordinated_startup_sequence();
+  void coordinated_bus_reset();
+  void apply_calibration_and_thresholds();
+  void log_reason(const char *reason);
 
   void soft_reset();
   void record_failure();
@@ -98,6 +103,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   bool interrupt_active_{false};
   uint8_t interrupt_miss_count_{0};
   bool interrupt_retry_scheduled_{false};
+  uint8_t consecutive_timeouts_{0};
 };
 
 }  // namespace vl53l1x

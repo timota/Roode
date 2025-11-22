@@ -50,17 +50,7 @@ void VL53L1X::setup() {
   ESP_LOGD(TAG, "Beginning setup");
 
   sensors.push_back(this);
-  // Bring down other sensors via XSHUT for address changes
-  for (auto *s : sensors) {
-    if (s != this && s->xshut_pin.has_value()) {
-      s->xshut_pin.value()->digital_write(false);
-#ifdef USE_ROODE_LOG
-      roode::Roode::log_event("xshut_sensor_" + std::to_string(s->sensor_id_) + "_off");
-      roode::Roode::log_event("xshut_toggled_off");
-      roode::Roode::log_event("xshut_toggled");
-#endif
-    }
-  }
+  coordinated_startup_sequence();
 
   if (this->xshut_pin.has_value()) {
     this->xshut_pin.value()->pin_mode(gpio::FLAG_OUTPUT | gpio::FLAG_PULLUP);
@@ -128,19 +118,7 @@ VL53L1_Error VL53L1X::init() {
   const RangingMode *mode = ranging_mode_override.value_or(Ranging::Long);
   set_ranging_mode(mode);
 
-  if (this->offset.has_value()) {
-    sensor_->set_offset_mm(this->offset.value());
-  }
-  if (this->xtalk.has_value()) {
-    sensor_->set_xtalk(this->xtalk.value());
-  }
-  // Optional thresholds from calibration
-  if (this->sigma_threshold_mm.has_value()) {
-    sensor_->set_sigma_threshold_mm(this->sigma_threshold_mm.value());
-  }
-  if (this->signal_threshold_kcps.has_value()) {
-    sensor_->set_signal_threshold_cps(this->signal_threshold_kcps.value());
-  }
+  apply_calibration_and_thresholds();
 
   return ESP_OK;
 }
@@ -150,6 +128,21 @@ VL53L1_Error VL53L1X::wait_for_boot() { return ESP_OK; }
 VL53L1_Error VL53L1X::get_device_state(uint8_t *device_state) {
   *device_state = 0x01;  // assume ready
   return ESP_OK;
+}
+
+void VL53L1X::apply_calibration_and_thresholds() {
+  if (this->offset.has_value()) {
+    sensor_->set_offset_mm(this->offset.value());
+  }
+  if (this->xtalk.has_value()) {
+    sensor_->set_xtalk(this->xtalk.value());
+  }
+  if (this->sigma_threshold_mm.has_value()) {
+    sensor_->set_sigma_threshold_mm(this->sigma_threshold_mm.value());
+  }
+  if (this->signal_threshold_kcps.has_value()) {
+    sensor_->set_signal_threshold_cps(this->signal_threshold_kcps.value());
+  }
 }
 
 void VL53L1X::set_ranging_mode(const RangingMode *mode) {
@@ -170,6 +163,41 @@ void VL53L1X::set_ranging_mode(const RangingMode *mode) {
 
   this->ranging_mode = mode;
   ESP_LOGI(TAG, "Set ranging mode: %s", mode->name);
+}
+
+void VL53L1X::coordinated_startup_sequence() {
+  // Pull peers low if they have XSHUT so address changes don't clash
+  for (auto *s : sensors) {
+    if (s != this && s->xshut_pin.has_value()) {
+      s->xshut_pin.value()->digital_write(false);
+#ifdef USE_ROODE_LOG
+      roode::Roode::log_event("xshut_sensor_" + std::to_string(s->sensor_id_) + "_off");
+#endif
+    }
+  }
+  // Our own XSHUT high already set in setup()
+}
+
+void VL53L1X::coordinated_bus_reset() {
+  bus_reset_count_++;
+  for (auto *s : sensors) {
+    if (s->xshut_pin.has_value()) s->xshut_pin.value()->digital_write(false);
+  }
+  delay(5);
+  for (auto *s : sensors) {
+    if (s->xshut_pin.has_value()) s->xshut_pin.value()->digital_write(true);
+  }
+  delay(2);
+  for (auto *s : sensors) {
+    s->init();
+  }
+}
+
+void VL53L1X::log_reason(const char *reason) {
+  ESP_LOGW(TAG, "%s", reason);
+#ifdef USE_ROODE_LOG
+  roode::Roode::log_event(reason);
+#endif
 }
 
 optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
@@ -223,6 +251,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   if (!ready) {
     status = ESP_ERR_TIMEOUT;
     sensor_->stop_ranging();
+    consecutive_timeouts_++;
     if (this->xshut_pin.has_value()) {
       this->restart();
     }
@@ -251,10 +280,12 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   if (m.status != vl53l1x_idf::RangeStatus::RANGE_VALID) {
     ESP_LOGW(TAG, "Range status not valid: %d", static_cast<int>(m.status));
     status = ESP_FAIL;
+    record_failure();
     return {};
   }
 
   status = ESP_OK;
+  consecutive_timeouts_ = 0;
   return {m.distance_mm};
 }
 
