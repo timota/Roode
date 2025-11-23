@@ -37,6 +37,9 @@ void VL53L1X::setup() {
   for (auto *s : sensors) {
     if (s != this && s->xshut_pin.has_value()) {
       s->xshut_pin.value()->digital_write(false);
+      ESP_LOGI(TAG, "XSHUT: temporarily powering off sensor %u while %u initializes", s->sensor_id_,
+               this->sensor_id_);
+      ESP_LOGD(TAG, "XSHUT toggled off");
     }
   }
 
@@ -46,6 +49,7 @@ void VL53L1X::setup() {
     ESP_LOGD(TAG, "XShut pin configured");
     this->xshut_pin.value()->digital_write(true);
     ESP_LOGD(TAG, "XShut pin set HIGH - sensor powered on");
+    ESP_LOGD(TAG, "XSHUT toggled on");
     delay(2);
   }
 
@@ -101,6 +105,8 @@ void VL53L1X::setup() {
     if (s != this && s->xshut_pin.has_value()) {
       s->xshut_pin.value()->digital_write(true);
       delay(2);
+      ESP_LOGI(TAG, "XSHUT: restoring power to sensor %u after %u init", s->sensor_id_, this->sensor_id_);
+      ESP_LOGD(TAG, "XSHUT toggled on");
     }
   }
 
