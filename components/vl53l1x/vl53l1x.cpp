@@ -33,6 +33,9 @@ void VL53L1X::dump_config() {
 void VL53L1X::setup() {
   ESP_LOGD(TAG, "Beginning setup");
 
+  // Prepare calibration storage unique per sensor_id
+  cal_pref_ = global_preferences->make_preference<CalibrationData>(0x5300 + this->sensor_id_);
+
   sensors.push_back(this);
   for (auto *s : sensors) {
     if (s != this && s->xshut_pin.has_value()) {
@@ -65,6 +68,12 @@ void VL53L1X::setup() {
     return;
   }
   ESP_LOGD(TAG, "Device initialized");
+
+  // Load stored calibration if present before applying overrides
+  if (this->load_calibration()) {
+    ESP_LOGI(TAG, "Applied stored calibration: offset=%dmm xtalk=%ucps", this->offset.value_or(0),
+             this->xtalk.value_or(0));
+  }
   if (desired_address_ != 0x29) {
     status = this->sensor.SetI2CAddress(desired_address_ << 1);
     if (status == VL53L1_ERROR_NONE) {
@@ -445,6 +454,59 @@ void VL53L1X::restart() {
     ESP_LOGW(TAG, "Restarting sensor without XSHUT pin");
     this->init();
   }
+}
+
+bool VL53L1X::save_calibration(int16_t offset_mm, uint16_t xtalk_cps) {
+  CalibrationData data{offset_mm, xtalk_cps, 0xC411BEEF};
+  bool ok = cal_pref_.save(&data);
+  ESP_LOGI(TAG, ok ? "Saved calibration: offset=%dmm xtalk=%ucps" : "Failed to save calibration", offset_mm,
+           xtalk_cps);
+  return ok;
+}
+
+bool VL53L1X::load_calibration() {
+  CalibrationData data{};
+  if (cal_pref_.load(&data) && data.magic == 0xC411BEEF) {
+    if (!this->offset.has_value())
+      this->offset = data.offset_mm;
+    if (!this->xtalk.has_value())
+      this->xtalk = data.xtalk_cps;
+    cal_loaded_ = true;
+    return true;
+  }
+  return false;
+}
+
+bool VL53L1X::calibrate_and_store(uint16_t offset_target_mm, uint16_t xtalk_target_mm) {
+  ESP_LOGI(TAG, "Starting VL53L1X calibration (offset %umm, xtalk %umm)", offset_target_mm, xtalk_target_mm);
+
+  // Ensure sensor is idle
+  this->sensor.StopRanging();
+
+  int16_t found_offset = 0;
+  uint16_t found_xtalk = 0;
+
+  auto status = this->sensor.CalibrateOffset(offset_target_mm, &found_offset);
+  if (status != VL53L1_ERROR_NONE) {
+    ESP_LOGE(TAG, "Offset calibration failed: %d", status);
+    return false;
+  }
+
+  status = this->sensor.CalibrateXTalk(xtalk_target_mm, &found_xtalk);
+  if (status != VL53L1_ERROR_NONE) {
+    ESP_LOGE(TAG, "XTalk calibration failed: %d", status);
+    return false;
+  }
+
+  // Apply and persist
+  this->sensor.SetOffsetInMm(found_offset);
+  this->sensor.SetXTalk(found_xtalk);
+  this->offset = found_offset;
+  this->xtalk = found_xtalk;
+  this->save_calibration(found_offset, found_xtalk);
+
+  ESP_LOGI(TAG, "Calibration complete: offset=%dmm xtalk=%ucps", found_offset, found_xtalk);
+  return true;
 }
 
 void VL53L1X::soft_reset() {

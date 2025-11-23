@@ -1,6 +1,7 @@
 #pragma once
 #include "VL53L1X_ULD.h"
 #include <vector>
+#include "esphome/core/preferences.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/application.h"
 #include "esphome/core/component.h"
@@ -51,6 +52,13 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   void set_xtalk(uint16_t val) { this->xtalk = val; }
   void set_timeout(uint16_t val) { this->timeout = val; }
 
+  // Manual calibration entry point (offset + xtalk); returns true on success and persists values.
+  bool calibrate_and_store(uint16_t offset_target_mm = 140, uint16_t xtalk_target_mm = 600);
+
+  // Persisted calibration helpers
+  bool load_calibration();
+  bool save_calibration(int16_t offset_mm, uint16_t xtalk_cps);
+
   bool is_interrupt_enabled() const { return interrupt_active_ && interrupt_pin.has_value(); }
 
  protected:
@@ -87,6 +95,15 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   uint8_t interrupt_miss_count_{0};
   uint32_t last_interrupt_retry_{0};
   uint8_t consecutive_failures_{0};
+
+  struct CalibrationData {
+    int16_t offset_mm;
+    uint16_t xtalk_cps;
+    uint32_t magic;
+  };
+
+  ESPPreferenceObject cal_pref_{};
+  bool cal_loaded_{false};
 };
 
 }  // namespace vl53l1x
