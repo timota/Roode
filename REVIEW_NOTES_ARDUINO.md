@@ -61,6 +61,12 @@ Purpose: identify improvements for performance, reliability, and maintainability
    - Driver code (`vl53l1x.cpp`) should only use the wrapped ULD APIs and ESPHome helpers; low-level I2C transactions live in the platform adapter only.
    - Platform-specific bits (e.g., delay, millis) continue to use ESPHome/Arduino abstractions already in place.
 
+### Decision on Step 2 (ESPHome-backed ULD platform shim)
+- Benefit: replacing the Wire-based ULD platform with an ESPHome-backed shim would unify I2C handling under ESPHome’s bus (logging, recovery, multi-bus support). It’s mostly useful if we (a) vendor the ULD sources or (b) need non-default I2C buses without relying on Wire’s global state.
+- Current state: we are consuming VL53L1X_ULD as a PlatformIO library; its platform layer is internal and uses Wire. The driver itself already uses ESPHome’s I2CDevice for address selection and higher-level control, and works today.
+- Complexity trade-off: To swap the platform layer we’d need to vendor/override the ULD platform files or fork the library; otherwise the change won’t take effect. That adds maintenance overhead for modest gain on Arduino.
+- Decision: Do NOT implement a custom ESPHome-backed ULD platform shim at this stage. The benefits (cleaner abstraction, multi-bus alignment) don’t justify the added complexity while we remain on Arduino and consume ULD as an external lib. Revisit only if we vendor the ULD code or switch to ESP-IDF where Wire is unsuitable.
+
 3. Migration steps
    - Update platform files (i2ccoms/platform) to call ESPHome `I2CDevice`/`i2c::I2CBus` instead of `Wire` (or ensure they already do, then drop any leftover Wire includes).
    - Remove/replace any direct `Wire.*` in driver or ULD wrappers; keep only adapter calls.
