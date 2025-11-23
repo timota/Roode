@@ -1,6 +1,4 @@
 #pragma once
-#include <math.h>
-
 #include "VL53L1X_ULD.h"
 #include <vector>
 #include "esphome/components/i2c/i2c.h"
@@ -93,4 +91,3 @@ class VL53L1X : public i2c::I2CDevice, public Component {
 
 }  // namespace vl53l1x
 }  // namespace esphome
-
