@@ -1,6 +1,7 @@
 esphome:
   name: roode32idf
   friendly_name: roode32idf
+  # Minimal Arduino baseline example for VL53L1X + Roode. Adjust pins for your board.
 
 esp32:
   board: esp32dev
@@ -40,6 +41,9 @@ vl53l1x:
       interrupt: GPIO18
     calibration:
       ranging: long
+      # Optional: preset calibration values; if omitted, stored values are loaded if present.
+      # offset: 0mm
+      # crosstalk: 0cps
       # If present, these values are applied at boot before any auto-cal. If absent,
       # stored values (if any) are loaded; auto-cal runs only when no stored values exist.
       # offset: 0mm
