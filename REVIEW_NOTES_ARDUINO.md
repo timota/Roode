@@ -48,3 +48,29 @@ Purpose: identify improvements for performance, reliability, and maintainability
 3) Refine INT/poll fallback and recovery backoff to reduce timeouts.  
 4) Document configuration options and recommended wiring/timing.  
 5) Re-test multi-sensor flow (XSHUT sequencing, address changes).  
+
+## Plan: Platform layer clarity & ULD cleanup (Arduino)
+
+1. Platform/adapter audit
+   - Locate all Arduino-specific I2C usage: search for `Wire` or raw ESP-IDF i2c calls inside `components/vl53l1x` and ULD platform files. Primary suspects: `VL53L1X_i2ccoms` / `vl53l1_platform` equivalents and any direct `Wire.beginTransmission`/`requestFrom` in wrapper code.
+   - Identify existing abstraction: current driver inherits `i2c::I2CDevice` (ESPHome), but ULD platform layer may bypass it. Confirm whether the ULD platform files already provide a shim that could call ESPHome’s `I2CDevice` methods.
+
+2. Target design
+   - Define/confirm a minimal platform I2C interface used by ULD calls (read/write reg, burst read/write) implemented on top of ESPHome `i2c::I2CDevice` API. No direct `Wire` in the driver or platform files.
+   - Driver code (`vl53l1x.cpp`) should only use the wrapped ULD APIs and ESPHome helpers; low-level I2C transactions live in the platform adapter only.
+   - Platform-specific bits (e.g., delay, millis) continue to use ESPHome/Arduino abstractions already in place.
+
+3. Migration steps
+   - Update platform files (i2ccoms/platform) to call ESPHome `I2CDevice`/`i2c::I2CBus` instead of `Wire` (or ensure they already do, then drop any leftover Wire includes).
+   - Remove/replace any direct `Wire.*` in driver or ULD wrappers; keep only adapter calls.
+   - Adjust includes: drop unused Arduino headers where adapter is used.
+   - Order: (a) fix adapter implementation; (b) remove direct Wire uses; (c) clean includes; (d) re-run build.
+
+4. ULD cleanup
+   - Inventory ULD files in repo (API/calibration/platform/types/error_codes). Mark which are referenced by the build (via IDE listing or compile logs).
+   - Identify unused examples/sketches under `calibration/` or redundant platform variants; these can be isolated or removed from build paths (not necessarily deleted if still useful as docs).
+   - Trim includes in `vl53l1x.h/.cpp` to only needed ULD headers.
+
+5. Validation plan
+   - Run `esphome compile esphome.yaml` (Arduino) to ensure build stays green after refactor.
+   - Spot-check runtime on hardware if available (basic ranging) to confirm I2C access still works; otherwise rely on compile + log inspection for I2C transactions.
