@@ -22,6 +22,7 @@ A people counter that works with any smart home system that supports ESPHome/MQT
 - [Configuration Reference](#configuration-reference)
   - [Example Configurations](#example-configurations)
   - [Sensors](#sensors)
+- [Multi-Sensor Notes](#multi-sensor-notes)
 - [Threshold distance](#threshold-distance)
 - [Algorithm](#algorithm)
 - [Features](#features)
@@ -347,6 +348,13 @@ reflections cause false triggers.
 | [peopleCounter8266.yaml](peopleCounter8266.yaml) | Minimal setup for ESP8266 |
 | [peopleCounter8266Dev.yaml](peopleCounter8266Dev.yaml) | Most advanced ESP8266 configuration |
 | [extra_sensors_example.yaml](extra_sensors_example.yaml) | Additional diagnostic sensors |
+
+## Multi-Sensor Notes
+
+- Use one `vl53l1x` block per sensor; assign each a unique I²C address.
+- Wire XSHUT for every sensor so the driver can isolate peers while changing addresses; it already sequences XSHUT during setup.
+- Prefer separate INT pins per sensor; default polarity is active-low (INPUT_PULLUP). If you set INPUT_PULLDOWN, the driver assumes active-high.
+- Keep I2C at 400 kHz; for multiple sensors on longer runs ensure proper pull-ups and avoid mixing long ribbon cables without buffering.
 
 ### Sensors
 
@@ -682,4 +690,3 @@ these sensors.
 ## License
 
 This project is licensed under the terms of the [Unlicense](LICENSE).
-
