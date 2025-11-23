@@ -39,6 +39,7 @@ Purpose: identify improvements for performance, reliability, and maintainability
 
 ## Status updates
 - Logging decoupled from VL53L1X driver (Roode log calls removed; ESPHome logger only).
+- Build hygiene pass: Arduino `esphome compile esphome.yaml` now succeeds with current driver/library layout; remaining hygiene items (platform adapter cleanup, unused files) to revisit later.
 
 ## Next steps (when ready to implement)
 1) Clean build under Arduino framework; normalize includes/lib deps; remove cross-component logging.  
