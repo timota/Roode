@@ -30,7 +30,8 @@ Purpose: identify improvements for performance, reliability, and maintainability
 - Clarify platform layer: keep Arduino Wire code but isolate it behind a small adapter used by ULD; avoid mixing with ESPHome internals.  
 - Non-blocking reads: bound per-iteration delays and feed WDT; consider short cooperative delays in long loops (timeouts, auto-cal).  
 - INT handling: make polarity/pull explicit in config; validate once, fallback to polling with periodic re-validate; reduce log spam.  
-- Calibration: add optional persistence for offset/xtalk; provide a manual service/button; run auto-cal only when no stored data; use consistent timing windows.  
+- Calibration: add optional persistence for offset/xtalk; provide a manual service/button; run auto-cal only when no stored data; use consistent timing windows.
+ - Calibration: add optional persistence for offset/xtalk; provide a manual service/button; run auto-cal only when no stored data; use consistent timing windows. Keep Roode zone recalibration separate (it adjusts entry/exit thresholds), but add a dedicated VL53L1X-level calibration trigger to avoid reusing `roode_platform->recalibration()` for sensor offset/xtalk.
 - Recovery/backoff: tighten thresholds for XSHUT resets and consecutive failures; add cooldown to avoid rapid cycling.  
 - Multi-sensor coordination: encapsulate XSHUT peer sequencing in helper functions; document ordering.  
 - YAML/documentation: refresh sample configs (pins, timing budgets, calibration options); prune deprecated options.  
