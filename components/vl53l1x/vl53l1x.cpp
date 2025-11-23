@@ -66,7 +66,7 @@ void VL53L1X::setup() {
     if (status == VL53L1_ERROR_NONE) {
       char buf[5];
       snprintf(buf, sizeof(buf), "%02X", desired_address_);
-      roode::Roode::log_event("sensor_" + std::to_string(sensor_id_) + "_addr = 0x" + std::string(buf));
+      ESP_LOGI(TAG, "Sensor %u I2C address changed to 0x%s", sensor_id_, buf);
     } else {
       ESP_LOGE(TAG, "Failed to change address. Error: %d", status);
     }
