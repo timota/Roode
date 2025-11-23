@@ -355,6 +355,9 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
 
   ESP_LOGV(TAG, "Finished distance read: %d", distance);
   consecutive_failures_ = 0;
+  recovery_window_count_ = 0;
+  next_recovery_allowed_ = 0;
+  backoff_ms_ = BASE_BACKOFF_MS;
   return {distance};
 }
 
@@ -536,11 +539,38 @@ void VL53L1X::soft_reset() {
 
 
 void VL53L1X::record_failure() {
-  if (++consecutive_failures_ >= 10) {
-    ESP_LOGW(TAG, "10 read errors — triggering recovery");
-    soft_reset();
-    consecutive_failures_ = 0;
+  if (++consecutive_failures_ < FAILURE_THRESHOLD)
+    return;
+
+  uint32_t now = millis();
+
+  // Window tracking
+  if (recovery_window_start_ == 0 || (now - recovery_window_start_) > RECOVERY_WINDOW_MS) {
+    recovery_window_start_ = now;
+    recovery_window_count_ = 0;
   }
+
+  if (now < next_recovery_allowed_) {
+    ESP_LOGW(TAG, "Recovery cooldown active; skipping reset (next in %ums)", next_recovery_allowed_ - now);
+    consecutive_failures_ = 0;
+    return;
+  }
+
+  if (recovery_window_count_ >= MAX_RECOVERIES_PER_WINDOW) {
+    ESP_LOGW(TAG, "Recovery limit reached (%u in %us); marking sensor failed until window resets",
+             MAX_RECOVERIES_PER_WINDOW, RECOVERY_WINDOW_MS / 1000);
+    this->mark_failed();
+    consecutive_failures_ = 0;
+    return;
+  }
+
+  ESP_LOGW(TAG, "Triggering XSHUT recovery (failures=%u)", consecutive_failures_);
+  soft_reset();
+  recovery_window_count_++;
+  consecutive_failures_ = 0;
+
+  backoff_ms_ = std::min<uint32_t>(MAX_BACKOFF_MS, backoff_ms_ * 2);
+  next_recovery_allowed_ = now + backoff_ms_;
 }
 
 

@@ -100,6 +100,16 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   uint8_t interrupt_miss_count_{0};
   uint32_t last_interrupt_retry_{0};
   uint8_t consecutive_failures_{0};
+  uint32_t recovery_window_start_{0};
+  uint8_t recovery_window_count_{0};
+  uint32_t next_recovery_allowed_{0};
+  uint32_t backoff_ms_{5000};
+
+  static constexpr uint8_t FAILURE_THRESHOLD = 5;
+  static constexpr uint8_t MAX_RECOVERIES_PER_WINDOW = 3;
+  static constexpr uint32_t RECOVERY_WINDOW_MS = 60000;
+  static constexpr uint32_t BASE_BACKOFF_MS = 5000;
+  static constexpr uint32_t MAX_BACKOFF_MS = 60000;
 
   struct CalibrationData {
     int16_t offset_mm;
