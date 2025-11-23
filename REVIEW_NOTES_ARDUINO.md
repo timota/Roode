@@ -37,6 +37,9 @@ Purpose: identify improvements for performance, reliability, and maintainability
 - Build hygiene: verify Arduino-framework `esphome compile` passes; remove unused ULD files/includes; ensure library deps declared once.  
 - Metrics/diagnostics: expose optional diagnostic sensors (INT level, recovery counts) without coupling to Roode.
 
+## Status updates
+- Logging decoupled from VL53L1X driver (Roode log calls removed; ESPHome logger only).
+
 ## Next steps (when ready to implement)
 1) Clean build under Arduino framework; normalize includes/lib deps; remove cross-component logging.  
 2) Add calibration persistence and optional manual trigger; default to use stored values.  
