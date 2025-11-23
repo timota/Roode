@@ -57,9 +57,10 @@ void VL53L1X::setup() {
   }
 
   if (this->interrupt_pin.has_value()) {
+    // Active level inferred from config (set_interrupt_active_high). Apply mode as provided by pin setup.
     this->interrupt_pin.value()->pin_mode(gpio::FLAG_INPUT | gpio::FLAG_PULLUP);
     this->interrupt_pin.value()->setup();
-    ESP_LOGD(TAG, "Interrupt pin configured");
+    ESP_LOGD(TAG, "Interrupt pin configured (active=%s)", inferred_active_high_ ? "HIGH" : "LOW");
   }
 
   auto status = this->init();
@@ -389,12 +390,12 @@ bool VL53L1X::check_features() {
   if (this->interrupt_pin.has_value()) {
     int_ok = validate_interrupt();
     if (!int_ok) {
-      ESP_LOGE(TAG, "Interrupt pin validation failed, falling back to polling");
+      ESP_LOGW(TAG, "Interrupt validation failed, falling back to polling");
       interrupt_active_ = false;
       interrupt_miss_count_ = 0;
       last_interrupt_retry_ = millis();
     } else {
-      ESP_LOGI(TAG, "Interrupt pin working");
+      ESP_LOGI(TAG, "Interrupt pin working; using INT mode");
       interrupt_active_ = true;
       interrupt_miss_count_ = 0;
     }
@@ -420,14 +421,16 @@ bool VL53L1X::validate_interrupt() {
   bool ok = false;
   if (!this->interrupt_pin.has_value())
     return false;
+  bool active_level = inferred_active_high_ ? true : false;
   bool initial = this->interrupt_pin.value()->digital_read();
-  ESP_LOGD(TAG, "Interrupt pin initial state: %d", initial);
+  ESP_LOGD(TAG, "Interrupt pin initial state: %d (active=%d)", initial, active_level);
   auto status = this->sensor.StartRanging();
   if (status == VL53L1_ERROR_NONE) {
     auto start = millis();
     while ((millis() - start) < this->timeout) {
-      if (this->interrupt_pin.value()->digital_read() != initial) {
-        ESP_LOGD(TAG, "Interrupt pin state changed - measurement ready");
+      bool level = this->interrupt_pin.value()->digital_read();
+      if (is_int_active_level(level)) {
+        ESP_LOGD(TAG, "Interrupt pin at active level - measurement ready");
         ok = true;
         break;
       }
@@ -440,6 +443,8 @@ bool VL53L1X::validate_interrupt() {
   }
   return ok;
 }
+
+bool VL53L1X::is_int_active_level(bool level) const { return inferred_active_high_ ? level : !level; }
 
 void VL53L1X::restart() {
   if (this->xshut_pin.has_value()) {

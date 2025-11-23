@@ -46,6 +46,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
 
   void set_xshut_pin(GPIOPin *pin) { this->xshut_pin = pin; }
   void set_interrupt_pin(InternalGPIOPin *pin) { this->interrupt_pin = pin; }
+  void set_interrupt_active_high(bool v) { inferred_active_high_ = v; }
   optional<const RangingMode *> get_ranging_mode_override() { return this->ranging_mode_override; }
   void set_ranging_mode_override(const RangingMode *mode) { this->ranging_mode_override = {mode}; }
   void set_offset(int16_t val) { this->offset = val; }
@@ -87,6 +88,10 @@ class VL53L1X : public i2c::I2CDevice, public Component {
    */
   bool check_features();
   bool validate_interrupt();
+  bool is_int_active_level(bool level) const;
+
+  // Derived from pin mode: INPUT_PULLUP -> active low; INPUT_PULLDOWN -> active high; default -> active low.
+  bool inferred_active_high_{false};
 
   void soft_reset();
   void record_failure();
