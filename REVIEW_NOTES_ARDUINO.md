@@ -54,6 +54,7 @@ Purpose: identify improvements for performance, reliability, and maintainability
 1. Platform/adapter audit
    - Locate all Arduino-specific I2C usage: search for `Wire` or raw ESP-IDF i2c calls inside `components/vl53l1x` and ULD platform files. Primary suspects: `VL53L1X_i2ccoms` / `vl53l1_platform` equivalents and any direct `Wire.beginTransmission`/`requestFrom` in wrapper code.
    - Identify existing abstraction: current driver inherits `i2c::I2CDevice` (ESPHome), but ULD platform layer may bypass it. Confirm whether the ULD platform files already provide a shim that could call ESPHome’s `I2CDevice` methods.
+   - Audit result (done): Driver code uses only ESPHome I2CDevice and ULD APIs; no `Wire` or raw I2C calls in `components/`. External library `VL53L1X_ULD` (from PlatformIO) uses its own platform `VL53L1X_i2ccoms.cpp` (Wire-based). Calibration examples under `calibration/` still call `Wire.begin()` but are not built. No in-repo ULD sources are compiled, so pruning locally has no effect unless we vendor/override the library platform layer.
 
 2. Target design
    - Define/confirm a minimal platform I2C interface used by ULD calls (read/write reg, burst read/write) implemented on top of ESPHome `i2c::I2CDevice` API. No direct `Wire` in the driver or platform files.
