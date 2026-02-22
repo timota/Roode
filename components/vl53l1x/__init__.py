@@ -111,8 +111,6 @@ CONFIG_SCHEMA = (
 
 
 async def to_code(config: Dict):
-    cg.add_library("rneurink", "1.2.3", "VL53L1X_ULD")
-
     vl53l1x = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(vl53l1x, config)
     await i2c.register_i2c_device(vl53l1x, config)
@@ -144,6 +142,8 @@ async def setup_hardware(vl53l1x: cg.Pvariable, config: Dict):
     if CONF_INTERRUPT in pins:
         interrupt = await cg.gpio_pin_expression(pins[CONF_INTERRUPT])
         cg.add(vl53l1x.set_interrupt_pin(interrupt))
+        mode = pins[CONF_INTERRUPT].get("mode", "INPUT_PULLUP")
+        cg.add(vl53l1x.set_interrupt_active_high(mode == "INPUT_PULLDOWN"))
     if CONF_XSHUT in pins:
         xshut = await cg.gpio_pin_expression(pins[CONF_XSHUT])
         cg.add(vl53l1x.set_xshut_pin(xshut))

@@ -1,8 +1,7 @@
 #pragma once
-#include <math.h>
-
 #include "VL53L1X_ULD.h"
 #include <vector>
+#include "esphome/core/preferences.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/application.h"
 #include "esphome/core/component.h"
@@ -47,11 +46,27 @@ class VL53L1X : public i2c::I2CDevice, public Component {
 
   void set_xshut_pin(GPIOPin *pin) { this->xshut_pin = pin; }
   void set_interrupt_pin(InternalGPIOPin *pin) { this->interrupt_pin = pin; }
+  void set_interrupt_active_high(bool v) { inferred_active_high_ = v; }
   optional<const RangingMode *> get_ranging_mode_override() { return this->ranging_mode_override; }
   void set_ranging_mode_override(const RangingMode *mode) { this->ranging_mode_override = {mode}; }
   void set_offset(int16_t val) { this->offset = val; }
   void set_xtalk(uint16_t val) { this->xtalk = val; }
   void set_timeout(uint16_t val) { this->timeout = val; }
+  static void set_active_sensor(VL53L1X *sensor) { active_sensor_ = sensor; }
+  static VL53L1X *get_active_sensor() { return active_sensor_; }
+  i2c::ErrorCode bridge_write_read(uint8_t address, const uint8_t *write_buffer, size_t write_count,
+                                   uint8_t *read_buffer, size_t read_count) const {
+    if (this->bus_ == nullptr)
+      return i2c::ERROR_NOT_INITIALIZED;
+    return this->bus_->write_readv(address, write_buffer, write_count, read_buffer, read_count);
+  }
+
+  // Manual calibration entry point (offset + xtalk); returns true on success and persists values.
+  bool calibrate_and_store(uint16_t offset_target_mm = 140, uint16_t xtalk_target_mm = 600);
+
+  // Persisted calibration helpers
+  bool load_calibration();
+  bool save_calibration(int16_t offset_mm, uint16_t xtalk_cps);
 
   bool is_interrupt_enabled() const { return interrupt_active_ && interrupt_pin.has_value(); }
 
@@ -70,6 +85,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   uint8_t sensor_id_{0};
   uint8_t desired_address_{0x29};
   static std::vector<VL53L1X *> sensors;
+  static VL53L1X *active_sensor_;
 
   VL53L1_Error init();
   VL53L1_Error reinitialize_after_reset();
@@ -84,6 +100,9 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   bool validate_interrupt();
   bool is_int_active_level(bool level) const;
 
+  // Derived from pin mode: INPUT_PULLUP -> active low; INPUT_PULLDOWN -> active high; default -> active low.
+  bool inferred_active_high_{false};
+
   void soft_reset();
   void record_failure();
 
@@ -91,6 +110,24 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   uint8_t interrupt_miss_count_{0};
   uint32_t last_interrupt_retry_{0};
   uint8_t consecutive_failures_{0};
+  uint32_t recovery_window_start_{0};
+  uint8_t recovery_window_count_{0};
+  uint32_t next_recovery_allowed_{0};
+  uint32_t backoff_ms_{5000};
+
+  static constexpr uint8_t FAILURE_THRESHOLD = 5;
+  static constexpr uint8_t MAX_RECOVERIES_PER_WINDOW = 3;
+  static constexpr uint32_t RECOVERY_WINDOW_MS = 60000;
+  static constexpr uint32_t BASE_BACKOFF_MS = 5000;
+  static constexpr uint32_t MAX_BACKOFF_MS = 60000;
+  struct CalibrationData {
+    int16_t offset_mm;
+    uint16_t xtalk_cps;
+    uint32_t magic;
+  };
+
+  ESPPreferenceObject cal_pref_{};
+  bool cal_loaded_{false};
 };
 
 }  // namespace vl53l1x
