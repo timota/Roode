@@ -82,6 +82,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
    */
   bool check_features();
   bool validate_interrupt();
+  bool is_int_active_level(bool level) const;
 
   void soft_reset();
   void record_failure();

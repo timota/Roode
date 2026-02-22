@@ -318,7 +318,8 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   auto start_time = millis();
   while (!dataReady && (millis() - start_time) < this->timeout) {
     if (use_int) {
-      if (this->interrupt_pin.value()->digital_read() != initial_state) {
+      bool level = this->interrupt_pin.value()->digital_read();
+      if (is_int_active_level(level) && level != initial_state) {
         dataReady = true;
       }
     } else {
@@ -461,13 +462,14 @@ bool VL53L1X::validate_interrupt() {
   if (!this->interrupt_pin.has_value())
     return false;
   bool initial = this->interrupt_pin.value()->digital_read();
-  ESP_LOGD(TAG, "Interrupt pin initial state: %d", initial);
+  ESP_LOGD(TAG, "Interrupt pin initial state: %d (active=0)", initial);
   auto status = this->sensor.StartRanging();
   if (status == VL53L1_ERROR_NONE) {
     auto start = millis();
     while ((millis() - start) < this->timeout) {
-      if (this->interrupt_pin.value()->digital_read() != initial) {
-        ESP_LOGD(TAG, "Interrupt pin state changed - measurement ready");
+      bool level = this->interrupt_pin.value()->digital_read();
+      if (is_int_active_level(level)) {
+        ESP_LOGD(TAG, "Interrupt pin at active level - measurement ready");
         ok = true;
         break;
       }
@@ -480,6 +482,8 @@ bool VL53L1X::validate_interrupt() {
   }
   return ok;
 }
+
+bool VL53L1X::is_int_active_level(bool level) const { return !level; }
 
 void VL53L1X::restart() {
   if (this->xshut_pin.has_value()) {
