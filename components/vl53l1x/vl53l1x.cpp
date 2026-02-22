@@ -319,7 +319,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
   while (!dataReady && (millis() - start_time) < this->timeout) {
     if (use_int) {
       bool level = this->interrupt_pin.value()->digital_read();
-      if (is_int_active_level(level) && level != initial_state) {
+      if (is_int_active_level(level)) {
         dataReady = true;
       }
     } else {
