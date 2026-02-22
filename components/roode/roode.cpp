@@ -147,6 +147,9 @@ void Roode::setup() {
   entry->set_filter_mode(filter_mode_);
   exit->set_filter_window(filter_window_);
   exit->set_filter_mode(filter_mode_);
+  // Ensure ROI is valid before any startup distance reads (including persisted calibration validation).
+  entry->reset_roi(orientation_ == Parallel ? 167 : 195);
+  exit->reset_roi(orientation_ == Parallel ? 231 : 60);
 
   if (calibration_persistence_) {
     calibration_prefs_[0] = global_preferences->make_preference<CalibrationPrefs>(0xA0);
@@ -160,9 +163,16 @@ void Roode::setup() {
         z->threshold->max = calibration_data_[i].threshold_max_mm;
         int valid_count = 0;
         for (int s = 0; s < 5; s++) {
-          z->readDistance(distanceSensor);
+          auto read_status = z->readDistance(distanceSensor);
+          if (read_status != VL53L1_ERROR_NONE || z->getDistance() == 0) {
+            loaded = false;
+            break;
+          }
           if (abs((int) z->getDistance() - (int) z->threshold->idle) < (z->threshold->idle * 0.1))
             valid_count++;
+        }
+        if (!loaded) {
+          break;
         }
         if (valid_count < 5) {
           loaded = false;
