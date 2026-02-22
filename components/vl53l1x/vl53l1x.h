@@ -72,6 +72,7 @@ class VL53L1X : public i2c::I2CDevice, public Component {
   static std::vector<VL53L1X *> sensors;
 
   VL53L1_Error init();
+  VL53L1_Error reinitialize_after_reset();
   VL53L1_Error wait_for_boot();
   VL53L1_Error get_device_state(uint8_t *device_state);
   /**
@@ -93,4 +94,3 @@ class VL53L1X : public i2c::I2CDevice, public Component {
 
 }  // namespace vl53l1x
 }  // namespace esphome
-

@@ -150,6 +150,50 @@ VL53L1_Error VL53L1X::init() {
   return status;
 }
 
+VL53L1_Error VL53L1X::reinitialize_after_reset() {
+  auto status = wait_for_boot();
+  if (status != VL53L1_ERROR_NONE) {
+    return status;
+  }
+
+  status = this->sensor.Init();
+  if (status != VL53L1_ERROR_NONE) {
+    ESP_LOGE(TAG, "Could not reinitialize device after reset, error code: %d", status);
+    return status;
+  }
+
+  if (this->offset.has_value()) {
+    status = this->sensor.SetOffsetInMm(this->offset.value());
+    if (status != VL53L1_ERROR_NONE) {
+      ESP_LOGW(TAG, "Could not restore offset after reset, error code: %d", status);
+    }
+  }
+
+  if (this->xtalk.has_value()) {
+    status = this->sensor.SetXTalk(this->xtalk.value());
+    if (status != VL53L1_ERROR_NONE) {
+      ESP_LOGW(TAG, "Could not restore xtalk after reset, error code: %d", status);
+    }
+  }
+
+  if (this->ranging_mode != nullptr) {
+    status = this->sensor.SetDistanceMode(this->ranging_mode->mode);
+    if (status != VL53L1_ERROR_NONE) {
+      ESP_LOGW(TAG, "Could not restore distance mode after reset, error code: %d", status);
+    }
+    status = this->sensor.SetTimingBudgetInMs(this->ranging_mode->timing_budget);
+    if (status != VL53L1_ERROR_NONE) {
+      ESP_LOGW(TAG, "Could not restore timing budget after reset, error code: %d", status);
+    }
+    status = this->sensor.SetInterMeasurementInMs(this->ranging_mode->delay_between_measurements);
+    if (status != VL53L1_ERROR_NONE) {
+      ESP_LOGW(TAG, "Could not restore inter-measurement after reset, error code: %d", status);
+    }
+  }
+
+  return VL53L1_ERROR_NONE;
+}
+
 VL53L1_Error VL53L1X::wait_for_boot() {
   // Wait for firmware to copy NVM device_state into registers
   delayMicroseconds(1200);
@@ -316,21 +360,7 @@ optional<uint16_t> VL53L1X::read_distance(ROI *roi, VL53L1_Error &status) {
     ESP_LOGW(TAG, "Timed out waiting for measurement ready");
     status = VL53L1_ERROR_TIME_OUT;
     this->sensor.StopRanging();
-    if (this->xshut_pin.has_value()) {
-      this->xshut_pin.value()->digital_write(false);
-      roode::Roode::log_event("xshut_pulse_off_sensor_" + std::to_string(sensor_id_));
-      roode::Roode::log_event("xshut_pulse_off");
-      ESP_LOGW(TAG, "XShut pin set LOW - resetting sensor");
-      delay(100);
-      this->xshut_pin.value()->digital_write(true);
-      roode::Roode::log_event("xshut_reinitialize_sensor_" + std::to_string(sensor_id_));
-      roode::Roode::log_event("xshut_reinitialize");
-      ESP_LOGD(TAG, "XShut pin set HIGH - reset complete");
-      this->wait_for_boot();
-      roode::Roode::log_event("sensor_" + std::to_string(sensor_id_) + ".recovered_via_xshut");
-      roode::Roode::log_event("sensor.recovered_via_xshut");
-      recovery_count_++;
-    }
+    soft_reset();
     record_failure();
     return {};
   }
@@ -377,7 +407,7 @@ bool VL53L1X::check_features() {
     delay(10);
     this->xshut_pin.value()->digital_write(true);
     ESP_LOGD(TAG, "XShut pin set HIGH - validation reset complete");
-    xshut_ok = (this->wait_for_boot() == VL53L1_ERROR_NONE);
+    xshut_ok = (this->reinitialize_after_reset() == VL53L1_ERROR_NONE);
     if (!xshut_ok) {
       ESP_LOGE(TAG, "XShut pin validation failed, disabling power cycle support");
       this->xshut_pin.reset();
@@ -462,7 +492,7 @@ void VL53L1X::restart() {
     roode::Roode::log_event("xshut_reinitialize_sensor_" + std::to_string(sensor_id_));
     roode::Roode::log_event("xshut_reinitialize");
     ESP_LOGD(TAG, "XShut pin set HIGH - restart complete");
-    this->wait_for_boot();
+    this->reinitialize_after_reset();
     roode::Roode::log_event("sensor_" + std::to_string(sensor_id_) + ".recovered_via_xshut");
     roode::Roode::log_event("sensor.recovered_via_xshut");
     recovery_count_++;
@@ -488,7 +518,7 @@ void VL53L1X::soft_reset() {
 
     ESP_LOGD(TAG, "XShut pin set HIGH - reset complete");
 
-    this->wait_for_boot();
+    this->reinitialize_after_reset();
     roode::Roode::log_event("sensor_" + std::to_string(sensor_id_) + ".recovered_via_xshut");
     roode::Roode::log_event("sensor.recovered_via_xshut");
     recovery_count_++;
